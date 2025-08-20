@@ -358,6 +358,14 @@ void executeSigMix(){
     Float_t selectedVertexDistance = 2.0f;
     int poolSize = 10;   
     Int_t pairChargeMult = 1; // 1 for Same-Sign, -1 for Opposite-Sign
+    
+    // You can also have a specific configuration for each bin
+    /*
+    std::vector<ControlVar> selectedControlVar = {ControlVar::CENTHF, ControlVar::CENT, ControlVar::CENT, ControlVar::CENT};
+    std::vector<Float_t> selectedVertexDistance = {2.0f, 3.0f, 3.0f, 2.0f};
+    std::vector<int> poolSize = {10, 10, 10, 9};   
+    std::vector<Int_t> pairChargeMult = {1, -1, 1, 1}; // 1 for Same-Sign, -1 for Opposite-Sign
+    */
 
     // --- Loop over Bins and Execute Analysis ---
     std::cout << "Starting analysis for " << centralityBins.size() - 1 << " bin(s)." << std::endl;
@@ -372,6 +380,9 @@ void executeSigMix(){
         // Pass all the configured parameters to the analysis function
         signal_mix(inputFile, treeName, bin_low, bin_high, 
                    selectedControlVar, selectedVertexDistance, pairChargeMult, poolSize);
+        // For multiple configs:
+        //signal_mix(inputFile, treeName, bin_low, bin_high, 
+        //           selectedControlVar[i], selectedVertexDistance[i], pairChargeMult[i], poolSize[i]);
     }
     
     std::cout << "\nAnalysis finished." << std::endl;
