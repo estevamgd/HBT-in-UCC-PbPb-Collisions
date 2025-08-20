@@ -6,12 +6,19 @@
 #include "TCanvas.h"
 #include "TH1D.h"
 #include "TH2D.h"
+#include "TStopwatch.h"
 #include <stdio.h>
 #include <iostream>
 #include <iomanip>
 #include <time.h>
 #include <TStyle.h>
+#include <fstream>
+#include <iomanip>
+#include <ctime>
+#include <sstream>
+#include <filesystem>
 #include "my_func.h"
+
 
 // Input file and tree names get tree and file
 bool getFileTree(const char* file_name, const char* tree_name, TFile *&fr, TTree *&t) {
@@ -90,8 +97,40 @@ TH1D* cHist(const char* name, const char* xAxisTitle, const char* yAxisTitle,
     return h;
 }
 
+TH1F* cHistFloat(const char* name, const char* xAxisTitle, const char* yAxisTitle, 
+    double xMin, double xMax, 
+    double ninterval = 275., double nlength = 0.02, double nscale = 1., 
+    int fill_color = 920, double fill_alpha = 1, int fill_style = 1001, 
+    int line_color = 1, double line_alpha = 1, int line_style = 1001, 
+    int line_width = 1, double label_size = 0.04) {
+// Create the histogram
+double scale = numBins(ninterval, nlength, nscale);
+TH1F* h = new TH1F(name, "", scale, xMin, xMax);
+
+// Set visual properties
+h->SetFillColorAlpha(fill_color, fill_alpha); 
+h->SetFillStyle(fill_style); 
+h->SetLineColorAlpha(line_color, line_alpha);
+h->SetLineStyle(line_style);
+h->SetLineWidth(line_width); 
+
+// Set titles and axis labels
+h->SetTitle("");
+h->GetXaxis()->SetTitle(xAxisTitle);
+h->GetYaxis()->SetTitle(yAxisTitle);
+
+// Set label sizes
+h->GetXaxis()->SetLabelSize(label_size);
+h->GetYaxis()->SetLabelSize(label_size);
+
+return h;
+}
+
 // Saving the canvases
 void save_canvas_images(TCanvas *canvases[], int numCanvases, const char *path, const char *prefix, const char *file_type) {
+    // Cria diretório se necessário
+    std::filesystem::create_directories(path);
+    
     if (numCanvases > 0) {
         // Get the current time
         time_t ttime = time(NULL);
@@ -117,6 +156,118 @@ void save_canvas_images(TCanvas *canvases[], int numCanvases, const char *path, 
         }
     }
     
+}
+
+// Saving histograms
+void save_histograms(TH1D *histograms[], int numHistograms, const char *path, const char *prefix,
+                    int centmult_min, int centmult_max) {
+    // Cria diretório se necessário
+    std::filesystem::create_directories(path);
+    
+    if (numHistograms > 0) {
+        const char *file_type = "root";
+        time_t ttime = time(NULL);
+        struct tm date = *localtime(&ttime);
+        char root_name[200];  
+
+        sprintf(root_name, "%s%s_cent%dto%d-%d-%02d-%02d-%02d-%02d-%02d.%s", 
+            path, prefix, 
+            centmult_min, centmult_max,
+            date.tm_year + 1900, 
+            date.tm_mon + 1, 
+            date.tm_mday, 
+            date.tm_hour, 
+            date.tm_min, 
+            date.tm_sec, 
+            file_type);
+
+        TFile saveFile(root_name, "NEw");
+
+        for (int i = 0; i < numHistograms; i++) {
+            histograms[i]->Write();
+        }
+    }
+    
+}
+
+
+void save_histograms(TH1D *histograms[], int numHistograms, const char *path, const char *prefix) {
+    // Cria diretório se necessário
+    std::filesystem::create_directories(path);
+    
+    if (numHistograms > 0) {
+        const char *file_type = "root";
+        time_t ttime = time(NULL);
+        struct tm date = *localtime(&ttime);
+        char root_name[200];  
+
+        sprintf(root_name, "%s%s-%d-%02d-%02d-%02d-%02d-%02d.%s", 
+            path, prefix, 
+            date.tm_year + 1900, 
+            date.tm_mon + 1, 
+            date.tm_mday, 
+            date.tm_hour, 
+            date.tm_min, 
+            date.tm_sec, 
+            file_type);
+
+        TFile saveFile(root_name, "NEw");
+
+        for (int i = 0; i < numHistograms; i++) {
+            histograms[i]->Write();
+        }
+    }
+    
+}
+
+// Save information
+void save_benchmark(TStopwatch* stopWatches[], int numSW, const char* path, const char* prefix, int nProcessedEvents = -1) {
+    // Cria diretório se necessário
+    std::filesystem::create_directories(path);
+
+    // Pega data/hora atual
+    time_t ttime = time(NULL);
+    struct tm date = *localtime(&ttime);
+
+    // Monta nome do arquivo
+    char fileName[256];
+    sprintf(fileName, "%s/%s_benchmark-%d-%02d-%02d-%02d-%02d-%02d.txt", 
+            path, prefix, 
+            date.tm_year + 1900, 
+            date.tm_mon + 1, 
+            date.tm_mday, 
+            date.tm_hour, 
+            date.tm_min, 
+            date.tm_sec);
+
+    // Abre arquivo
+    std::ofstream outFile(fileName);
+    if (!outFile.is_open()) {
+        std::cerr << "Erro ao abrir o arquivo para salvar benchmark: " << fileName << std::endl;
+        return;
+    }
+
+    outFile << "===== Benchmark - "
+            << (1900 + date.tm_year) << "/"
+            << (date.tm_mon + 1) << "/"
+            << date.tm_mday << " "
+            << date.tm_hour << ":" << date.tm_min << ":" << date.tm_sec
+            << " =====\n";
+
+    outFile << std::fixed << std::setprecision(3);
+
+    for (int i = 0; i < numSW; ++i) {
+        outFile << "Stopwatch " << i << ": "
+                << stopWatches[i]->RealTime() << " s (real), "
+                << stopWatches[i]->CpuTime()  << " s (CPU)" << "\n";
+    }
+
+    outFile << "=========================================\n";
+    outFile << "Number of Processed Events: " << nProcessedEvents << "\n";
+    outFile << "=========================================\n";
+    outFile.close();
+
+    std::cout << "Benchmark salvo em: " << fileName << std::endl;
 }
 
 // Delete canvases and histograms
@@ -151,5 +302,53 @@ void no_statbox(TH1D *histograms[], int numHistograms) {
         histograms[i]->SetStats(0);
     }
 }
+
+/*void setCentralities(std::vector<std::vector<int>>& centralitiesSelected, const std::vector<int>& centralityX) {
+    std::vector<int> centrailityAux;
+    centrailityAux.reserve(2);
+
+    const size_t numPairs = (centralityX.size() + 1) / 2;
+    centralitiesSelected.reserve(centralitiesSelected.size() + numPairs);
+
+    for (size_t i = 0; i < centralityX.size(); ++i) {
+        centrailityAux.push_back(centralityX[i]);
+
+        if (i % 2 == 1) {
+            centralitiesSelected.push_back(centrailityAux);
+            centrailityAux.clear();
+        }
+    }
+}
+*/
+
+enum LoopMode { SINGLE = 0, BOTH = 1, DOUBLE = 2 }; // Define an enum for modes
+
+int setLoopMode(LoopMode mode) {
+    int xmode = 2;
+
+    switch (mode) {
+        case SINGLE:
+            xmode = 0;
+            break;
+        case BOTH:
+            xmode = 1;
+            break;
+        case DOUBLE:
+            xmode = 2;
+            break;
+        default:
+            std::cout << "Choose between: SINGLE, BOTH, or DOUBLE." << std::endl;
+    }
+    return xmode;
+}
+
+//enum class ControlVar { CENT = 0, MULT = 1, VERTEX = 2 }; // Define an enum for types of control var
+//constexpr int nControlVar = 3;
+//
+//struct TrackInfo {
+//    ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> p4;
+//    Int_t charge;    
+//    Float_t weight;  
+//};
 
 #endif 
