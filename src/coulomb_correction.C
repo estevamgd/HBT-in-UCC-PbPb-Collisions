@@ -123,16 +123,18 @@ void coulomb_correction() {
     h22->SetFillColorAlpha(kRed, 0.5);
     h33->SetFillColorAlpha(kBlue, 0.5);
     h44->SetFillColorAlpha(kBlue, 0.5);
-    sr->SetFillColorAlpha(kGreen, 0.5);
-    sr_cor->SetFillColorAlpha(kYellow, 0.5);
+    sr->SetFillColorAlpha(kRed, 0.5);
+    sr_cor->SetFillColorAlpha(kBlue, 0.5);
 
     // Adjusting fill colors
     h11->SetLineColor(kRed);
     h22->SetLineColor(kRed);
     h33->SetLineColor(kBlue);
     h44->SetLineColor(kBlue);
-    sr->SetLineColor(kGreen);
-    sr_cor->SetLineColor(kYellow);
+    sr->SetLineWidth(4);
+    sr->SetLineColor(kRed);
+    sr_cor->SetLineWidth(4);
+    sr_cor->SetLineColor(kBlue);
 
     // Set titles and axis labels
     h11->GetXaxis()->SetTitle("qinv[GeV]");

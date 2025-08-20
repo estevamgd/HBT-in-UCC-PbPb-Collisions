@@ -117,6 +117,7 @@ void create_hist_tree() {
     // Dividing SS/OS
     TH1D *sr = (TH1D *)h2_normalized->Clone("sr");
     TH1D *sr_cor = (TH1D *)h4_normalized->Clone("sr_cor");
+    
     sr->Divide(h1_normalized);
     sr->SetLineColor(kRed);
 
