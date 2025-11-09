@@ -13,11 +13,72 @@
 #include <time.h>
 #include <TStyle.h>
 #include <fstream>
-#include <iomanip>
 #include <ctime>
 #include <sstream>
 #include <filesystem>
 #include "my_func.h"
+#include "Math/LorentzVector.h"
+#include "Math/PtEtaPhiM4D.h"
+#include "TMath.h"
+#include <vector>
+#include <thread>
+#include <mutex>
+#include <cmath>
+#include <chrono>
+#include <string>
+#include "data_func.h"
+#include <TSystem.h>
+#include <TLatex.h>
+
+using FourVector = ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>;
+
+enum class ControlVar { CENT = 0, MULT = 1, CENTHF = 2 };
+
+
+const char* getSelVarName(ControlVar varType) {
+    if (varType == ControlVar::CENT) return "CENT";
+    if (varType == ControlVar::MULT) return "MULT";
+    if (varType == ControlVar::CENTHF) return "CENTHF";
+    return "UNKNOWN";
+}
+
+
+enum LoopMode { SINGLE = 0, BOTH = 1, DOUBLE = 2 }; // Define an enum for modes
+
+
+std::string getTimestamp() {
+    time_t ttime = time(NULL);
+    struct tm date = *localtime(&ttime);
+    char buffer[80];
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d_%H-%M-%S", &date);
+    return std::string(buffer);
+}
+
+
+void drawCMSHeaders(const char* leftText = "#bf{CMS} #it{Preliminary}", const char* rightText = "", double rightTextSizeFactor = 1.0) {
+    TLatex* latexLeft = new TLatex();
+    latexLeft->SetNDC(); // Use Normalized Device Coordinates
+    latexLeft->SetTextFont(42); // Standard font
+    latexLeft->SetTextSize(0.04); 
+
+    // Draw left text
+    latexLeft->SetTextAlign(11); // Align left, bottom
+    latexLeft->DrawLatex(gPad->GetLeftMargin(), 1 - gPad->GetTopMargin() + 0.01, leftText);
+
+    TLatex* latexRight = new TLatex();
+    latexRight->SetNDC();
+    latexRight->SetTextFont(42);
+    // Apply size factor for right text only
+    latexRight->SetTextSize(0.04 * rightTextSizeFactor); 
+
+    // Draw right text
+    latexRight->SetTextAlign(31); // Align right, bottom
+    latexRight->DrawLatex(1 - gPad->GetRightMargin(), 1 - gPad->GetTopMargin() + 0.01, rightText);
+    
+    // Clean up TLaTeX objects
+    delete latexLeft;
+    delete latexRight; 
+}
 
 
 // Input file and tree names get tree and file
@@ -190,7 +251,6 @@ void save_histograms(TH1D *histograms[], int numHistograms, const char *path, co
     
 }
 
-
 void save_histograms(TH1D *histograms[], int numHistograms, const char *path, const char *prefix) {
     // Cria diretório se necessário
     std::filesystem::create_directories(path);
@@ -270,31 +330,98 @@ void save_benchmark(TStopwatch* stopWatches[], int numSW, const char* path, cons
     std::cout << "Benchmark salvo em: " << fileName << std::endl;
 }
 
-// Delete canvases and histograms
-void close_program(TCanvas *canvases[], int numCanvases, TH1D *histograms[], int numHistograms, TFile *fr,
-                    TH2D *histograms2d[] = nullptr) {
-    if (numCanvases > 0) {
+void save_benchmark_chrono(const std::vector<double>& durations, const std::vector<std::string>& labels, const char* path, const char* prefix, 
+    int nProcessedEventsSig = -1, int nProcessedEventsMix = -1) {
+    std::filesystem::create_directories(path);
+
+    time_t ttime = time(NULL);
+    struct tm date = *localtime(&ttime);
+
+    char fileName[256];
+    sprintf(fileName, "%s/%s_benchmark-%d-%02d-%02d-%02d-%02d-%02d.txt",
+            path, prefix,
+            date.tm_year + 1900,
+            date.tm_mon + 1,
+            date.tm_mday,
+            date.tm_hour,
+            date.tm_min,
+            date.tm_sec);
+
+    std::ofstream outFile(fileName);
+    if (!outFile.is_open()) {
+        std::cerr << "Error opening file to save benchmark: " << fileName << std::endl;
+        return;
+    }
+
+    outFile << "===== Benchmark - "
+            << (1900 + date.tm_year) << "/"
+            << (date.tm_mon + 1) << "/"
+            << date.tm_mday << " "
+            << date.tm_hour << ":" << date.tm_min << ":" << date.tm_sec
+            << " =====\n";
+
+    outFile << std::fixed << std::setprecision(6);
+
+    if (durations.size() != labels.size()) {
+         outFile << "Error: Mismatch between number of durations and labels.\n";
+    } else {
+        for (size_t i = 0; i < durations.size(); ++i) {
+            outFile << labels[i] << ": "
+                    << durations[i] << " s\n";
+        }
+    }
+
+    outFile << "=========================================\n";
+    outFile << "Number of Processed Events(Sig): " << nProcessedEventsSig << "\n";
+    outFile << "=========================================\n";
+    outFile << "=========================================\n";
+    outFile << "Number of Processed Events(Mix): " << nProcessedEventsMix << "\n";
+    outFile << "=========================================\n";
+    outFile.close();
+
+    std::cout << "Benchmark saved to: " << fileName << std::endl;
+}
+
+// Deletes canvases, histograms, legends, and closes the TFile
+void close_program(TCanvas *canvases[], int numCanvases,
+    TH1D *histograms[], int numHistograms,
+    TLegend *legends[], int numLegends,
+    TFile *fr,
+    TH2D *histograms2d[] = nullptr, int numHistograms2d = 0)
+{
+    // Delete Canvases
+    if (canvases != nullptr && numCanvases > 0) {
         for (int i = 0; i < numCanvases; i++) {
             delete canvases[i];
-        }
     }
-    if (histograms != nullptr) {
-        if (numHistograms > 0) {
-            for (int i = 0; i < numHistograms; i++) {
-                delete histograms[i];
-            }
-        }
-    }else {
-        if (numHistograms > 0) {
-            for (int i = 0; i < numHistograms; i++) {
-                delete histograms2d[i];
-            }
-        }
     }
-    
 
+    // Delete 1D Histograms
+    if (histograms != nullptr && numHistograms > 0) {
+        for (int i = 0; i < numHistograms; i++) {
+            delete histograms[i];
+    }
+    }
+
+    // --- NEW: Delete Legends ---
+    if (legends != nullptr && numLegends > 0) {
+        for (int i = 0; i < numLegends; i++) {
+            delete legends[i];
+    }
+    }
+
+    // --- CORRECTED: Delete 2D Histograms (was in a faulty else block) ---
+    if (histograms2d != nullptr && numHistograms2d > 0) {
+        for (int i = 0; i < numHistograms2d; i++) {
+            delete histograms2d[i];
+    }
+    }
+
+    // Close and delete the TFile
+    if (fr != nullptr) {
     fr->Close();
     delete fr;
+    }
 }
 
 void no_statbox(TH1D *histograms[], int numHistograms) {
@@ -321,7 +448,6 @@ void no_statbox(TH1D *histograms[], int numHistograms) {
 }
 */
 
-enum LoopMode { SINGLE = 0, BOTH = 1, DOUBLE = 2 }; // Define an enum for modes
 
 int setLoopMode(LoopMode mode) {
     int xmode = 2;
@@ -350,5 +476,19 @@ int setLoopMode(LoopMode mode) {
 //    Int_t charge;    
 //    Float_t weight;  
 //};
+
+TString findFile(const TString& pattern, const TString& version_tag = "") {
+    TString command;
+    if (version_tag.IsNull() || version_tag.IsWhitespace()) {
+        // Default behavior: find the newest file by sorting alphabetically in reverse (works with YYYY-MM-DD filenames).
+        command = TString::Format("ls -1r %s 2>/dev/null | head -n 1", pattern.Data());
+    } else {
+        // Specific version: find the file containing the version tag, return the newest match if multiple.
+        command = TString::Format("ls -1r %s 2>/dev/null | grep %s | head -n 1", pattern.Data(), version_tag.Data());
+    }
+    
+    TString result = TString(gSystem->GetFromPipe(command)).Strip(TString::kBoth, '\n');
+    return result;
+}
 
 #endif 

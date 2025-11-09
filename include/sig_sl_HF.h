@@ -110,9 +110,9 @@ void sig_sl_HF(const char *fileInput, const char *treeInput, int selectionVarI, 
         // === SIGNAL ===
         if (currentEventTracks4V.size() > 1) { // check if event has 2 or more tracks 
             // Single Loop
-            for (int k = 0; k < currentEventTracks4V.size()*(currentEventTracks4V.size() - 1); k++) {
-                int p1 = k / (currentEventTracks4V.size() - 1);
-                int p2 = (k % (currentEventTracks4V.size() - 1)) + 1;
+            for (size_t k = 0; k < currentEventTracks4V.size()*(currentEventTracks4V.size() - 1); k++) {
+                size_t p1 = k / (currentEventTracks4V.size() - 1);
+                size_t p2 = (k % (currentEventTracks4V.size() - 1)) + 1;
 
                 // Checks 
                 if (p1 >= p2) continue; // This makes sure we dont repeat a pair
@@ -205,7 +205,7 @@ void sig_sl_HF(const char *fileInput, const char *treeInput, int selectionVarI, 
 
     // Saving Benchmakrs
     const char *spath = "benchmarks";
-    save_benchmark(stopWatches, numSW, spath, prefix);
+    save_benchmark(stopWatches, numSW, spath, prefix, processedEvents);
 
     // Saving histograms
     const char *hpath = "./data/Sig_mix/";

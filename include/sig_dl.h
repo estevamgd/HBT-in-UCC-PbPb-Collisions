@@ -82,10 +82,10 @@ void sig_dl(const char *fileInput, const char *treeInput, int selectionVarI, int
 
         
     // Benchmarking
-    TStopwatch stopwatchFull;
+    TStopwatch stopwatchFull, stopwatchSignal;
 
-    const int numSW = 1;
-    TStopwatch* stopWatches[numSW] = {&stopwatchFull};
+    const int numSW = 2;
+    TStopwatch* stopWatches[numSW] = {&stopwatchFull, &stopwatchSignal};
 
     std::cout << "Processing " << fileInput << "/" << treeInput << " events with centrality from " << selectionVarI << " to " << selectionVarF << std::endl;
 
@@ -93,8 +93,10 @@ void sig_dl(const char *fileInput, const char *treeInput, int selectionVarI, int
     // Create 4-vector
     for (Long64_t i = 0; i < nentries; i++) {
         t->GetEntry(i);
-        
-        if (selectionVarI > hiBin || hiBin > selectionVarF) continue;
+
+        std::cout << "hiBin: " << hiBin << " selectionVarI: " << selectionVarI << " selectionVarF: " << selectionVarF << std::endl;
+        if (!(selectionVarI <= hiBin && hiBin < selectionVarF)) continue; 
+        //if (selectionVarI > hiBin || hiBin > selectionVarF) continue;
         processedEvents++;
 
         std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> currentEventTracks4V;
@@ -108,6 +110,7 @@ void sig_dl(const char *fileInput, const char *treeInput, int selectionVarI, int
             currentEventTracks4V.push_back(currentTrack4V);
         }
 
+        stopwatchSignal.Start(kFALSE);
         // === SIGNAL ===
         if (currentEventTracks4V.size() > 1) {
             // Double Loop
@@ -129,7 +132,7 @@ void sig_dl(const char *fileInput, const char *treeInput, int selectionVarI, int
                 }
             }
         }
-
+        stopwatchSignal.Stop();
         currentEventTracks4V.clear();
     }
     stopwatchFull.Stop();
@@ -204,7 +207,7 @@ void sig_dl(const char *fileInput, const char *treeInput, int selectionVarI, int
 
     // Saving Benchmakrs
     const char *spath = "benchmarks";
-    save_benchmark(stopWatches, numSW, spath, prefix);
+    save_benchmark(stopWatches, numSW, spath, prefix, processedEvents);
 
     // Saving histograms
     const char *hpath = "./data/Sig_mix/";

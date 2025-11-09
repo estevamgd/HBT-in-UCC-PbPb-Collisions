@@ -204,7 +204,7 @@ void sig_dl_HF(const char *fileInput, const char *treeInput, int selectionVarI) 
 
     // Saving Benchmakrs
     const char *spath = "benchmarks";
-    save_benchmark(stopWatches, numSW, spath, prefix);
+    save_benchmark(stopWatches, numSW, spath, prefix, processedEvents);
 
     // Saving histograms
     const char *hpath = "./data/Sig_mix/";
