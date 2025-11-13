@@ -88,7 +88,6 @@
         "h2proj.C": "cpp",
         "fitting_sr.C": "cpp",
         "create_hist_tree.C": "cpp",
-<<<<<<< HEAD
         "signal_and_mixing_distribution.C": "cpp",
         "any": "cpp",
         "bitset": "cpp",
@@ -129,9 +128,6 @@
         "fitSingleRatio.C": "cpp",
         "compareTiming.C": "cpp",
         "filesystem": "cpp",
-        "compareHistograms.C": "cpp"
-=======
-        "signal_and_mixing_distribution.C": "cpp"
->>>>>>> 2b091b9659e95d3fd75285d7dfdd974665166055
+        "compareHistograms.C": "cpp",
     }
 }

@@ -95,7 +95,7 @@ void getSingleRatio(const char* ss_FileName, const char* ss_HistName,
     save_histograms(histogramsToSave, 3, histoPath, outputPrefix);
     std::cout << "Output histograms saved to a new ROOT file in " << histoPath << std::endl;
 
-    const char* imagePath = "./imgs/correlation_ratios/";
+    const char* imagePath = "./imgs/test/correlation_ratios/";
     TCanvas *canvasesToSave[] = { cRatio };
     save_canvas_images(canvasesToSave, 1, imagePath, outputPrefix, "png");
     save_canvas_images(canvasesToSave, 1, imagePath, outputPrefix, "pdf");

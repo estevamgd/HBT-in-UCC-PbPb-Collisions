@@ -239,9 +239,9 @@ void plot_timing_comparison(
 
     const char * frameTitle; 
     TString rightHeaderText = "Timing"; 
-    if (selectionVarType == ControlVar::CENTHF) frameTitle = ";Centrality (HFsumET);Time / Event (s)";
-    else if (selectionVarType == ControlVar::MULT) frameTitle = ";Multiplicity (#Tracks);Time / Event (s)";
-    else frameTitle = ";Centrality (%);Time / Event (s)";
+    if (selectionVarType == ControlVar::CENTHF) frameTitle = ";Centrality (HFsumET);Time (s) / Event";
+    else if (selectionVarType == ControlVar::MULT) frameTitle = ";Multiplicity (#Tracks);Time (s) / Event";
+    else frameTitle = ";Centrality (%);Time (s) / Event";
 
     TH1F *frame = new TH1F("frame", frameTitle, n_bins, 0, n_bins);
     frame->SetStats(0);
@@ -490,6 +490,7 @@ void plotAverageRatios(
     delete c; delete frame; delete g_summary; delete legend; delete line;
 }
 
+
 void runFullValidation(
     ControlVar methodSelectionVar,
     const std::vector<double>& centralityBins,
@@ -636,12 +637,6 @@ void runFullValidation(
 
     
     // --- PLOT TIMING AND RATIO GRAPHS ---
-    std::vector<double> n_events_total;
-    for(size_t i = 0; i < n_events_sig.size(); ++i) {
-        n_events_total.push_back(n_events_sig[i] + n_events_mix[i]);
-    }
-
-
     if (n_events_sig.empty()) { 
         std::cerr << "\nError: No timing data was successfully loaded. Aborting timing plots." << std::endl;
     } else {
@@ -653,24 +648,12 @@ void runFullValidation(
             for (size_t k = 0; k < n_metrics; ++k) {
                 int expanded_idx = j * n_metrics + k;
 
-                // ===================================================================
-                // --- 2. Select correct normalizer (Sig, Mix, or Total) ---
-                const std::string& label = time_labels_to_plot[k];
-                const std::vector<double>* n_events_to_use_ptr = &n_events_sig; // Default to Sig
-
-                if (label.find("Mix") != std::string::npos) {
-                    n_events_to_use_ptr = &n_events_mix;
-                    std::cout << "  -> Normalizing '" << label << "' using nEvents(Mix)" << std::endl;
-                } else if (label.find("Total") != std::string::npos) {
-                    n_events_to_use_ptr = &n_events_total;
-                    std::cout << "  -> Normalizing '" << label << "' using nEvents(Sig+Mix)" << std::endl;
-                } else {
-                    // Default case (e.g., "Signal Time")
+                    // ===================================================================
+                    // --- Always normalize by number of signal events ---
+                    const std::string& label = time_labels_to_plot[k];
                     std::cout << "  -> Normalizing '" << label << "' using nEvents(Sig)" << std::endl;
-                }
-                
-                const std::vector<double>& n_events_to_use = *n_events_to_use_ptr;
-                // ===================================================================
+                    const std::vector<double>& n_events_to_use = n_events_sig;
+                    // ===================================================================
 
                 const std::vector<double>& raw_times = all_timings_expanded[expanded_idx];
 
@@ -710,7 +693,6 @@ void runFullValidation(
             std::vector<std::string> ratio_metric_names;
             std::string ratio_y_title = method_names[0] + " / " + method_names[1];
 
-
             for (int k = 0; k < n_metrics; ++k) {
                 std::vector<double>& regular_data = all_timings_expanded[k]; 
                 std::vector<double>& new_data = all_timings_expanded[n_metrics + k]; 
@@ -735,6 +717,122 @@ void runFullValidation(
 
         } else {
             std::cout << "\n--- Skipping Timing Ratios Plot (not 2 methods) ---" << std::endl;
+        }
+
+        // --- Write Summary TXT File ---
+        std::string txt_summary_path = timingOutputPath + "/validation_summary.txt";
+        std::ofstream txt_summary(txt_summary_path);
+        if (!txt_summary.is_open()) {
+            std::cerr << "Error: Could not open summary file for writing: " << txt_summary_path << std::endl;
+        } else {
+            txt_summary << "# Validation Summary\n";
+            txt_summary << "# Timing (s/event) for each method and centrality bin\n";
+            txt_summary << "# Centrality bins: " << centrality_labels.size() << "\n";
+            txt_summary << "# Methods: ";
+            for (const auto& name : method_names_expanded) txt_summary << name << ", ";
+            txt_summary << "\n\n";
+
+            // Timing per method/metric/centrality
+            txt_summary << "Timing (s/event):\n";
+            for (size_t i = 0; i < centrality_labels.size(); ++i) {
+                txt_summary << "Centrality: " << centrality_labels[i] << "\n";
+                for (size_t idx = 0; idx < method_names_expanded.size(); ++idx) {
+                    txt_summary << "  " << method_names_expanded[idx] << ": " << all_timings_normalized[idx][i] << "\n";
+                }
+                txt_summary << "\n";
+            }
+
+            // Timing ratios (if two methods)
+            if (n_methods == 2) {
+                txt_summary << "Timing Ratios (Serialized/Parallel):\n";
+                for (int k = 0; k < n_metrics; ++k) {
+                    txt_summary << "  Metric: " << time_labels_to_plot[k] << "\n";
+                    for (size_t j = 0; j < centrality_labels.size(); ++j) {
+                        double ratio = 0.0;
+                        double denom = all_timings_normalized[n_metrics + k][j];
+                        if (denom > 0)
+                            ratio = all_timings_normalized[k][j] / denom;
+                        txt_summary << "    " << centrality_labels[j] << ": " << ratio << "\n";
+                    }
+                }
+                txt_summary << "\n";
+            }
+
+            // Average ratios for each histogram
+            txt_summary << "Average Ratios for Each Histogram:\n";
+            for (const auto& hist_name : hists_to_compare) {
+                txt_summary << "  " << hist_name << ": ";
+                if (all_avg_hist_ratios.count(hist_name)) {
+                    const auto& ratios = all_avg_hist_ratios.at(hist_name);
+                    for (size_t i = 0; i < ratios.size(); ++i) {
+                        txt_summary << ratios[i];
+                        if (i < ratios.size() - 1) txt_summary << ", ";
+                    }
+                } else {
+                    txt_summary << "No data";
+                }
+                txt_summary << "\n";
+            }
+            txt_summary.close();
+            std::cout << "Summary TXT file written to: " << txt_summary_path << std::endl;
+        }
+
+        // --- Write Summary CSV File (tab-delimited, block format) ---
+        std::string csv_summary_path = timingOutputPath + "/validation_summary.csv";
+        std::ofstream csv_summary(csv_summary_path);
+        if (!csv_summary.is_open()) {
+            std::cerr << "Error: Could not open CSV file for writing: " << csv_summary_path << std::endl;
+        } else {
+            // Timing block per centrality
+            for (size_t i = 0; i < centrality_labels.size(); ++i) {
+                csv_summary << "Centrality\t" << centrality_labels[i] << "\n";
+                for (size_t idx = 0; idx < method_names_expanded.size(); ++idx) {
+                    csv_summary << method_names_expanded[idx] << "\t" << all_timings_normalized[idx][i] << "\n";
+                }
+                csv_summary << "\n";
+            }
+
+            // Timing ratios block per centrality (if two methods)
+            if (n_methods == 2) {
+                for (size_t i = 0; i < centrality_labels.size(); ++i) {
+                    csv_summary << "Centrality\t" << centrality_labels[i] << "\n";
+                    for (int k = 0; k < n_metrics; ++k) {
+                        double ratio = 0.0;
+                        double denom = all_timings_normalized[n_metrics + k][i];
+                        if (denom > 0)
+                            ratio = all_timings_normalized[k][i] / denom;
+                        csv_summary << "Timing Ratio - " << time_labels_to_plot[k] << "\t" << ratio << "\n";
+                    }
+                    csv_summary << "\n";
+                }
+            }
+
+            // Average ratios for each histogram block
+            csv_summary << "Average Ratios for Each Histogram\t\n";
+            csv_summary << "Histogram";
+            for (size_t i = 0; i < centrality_labels.size(); ++i) {
+                csv_summary << "\t" << centrality_labels[i];
+            }
+            csv_summary << "\n";
+            for (const auto& hist_name : hists_to_compare) {
+                csv_summary << hist_name;
+                if (all_avg_hist_ratios.count(hist_name)) {
+                    const auto& ratios = all_avg_hist_ratios.at(hist_name);
+                    for (size_t i = 0; i < centrality_labels.size(); ++i) {
+                        if (i < ratios.size())
+                            csv_summary << "\t" << ratios[i];
+                        else
+                            csv_summary << "\t";
+                    }
+                } else {
+                    for (size_t i = 0; i < centrality_labels.size(); ++i) {
+                        csv_summary << "\t";
+                    }
+                }
+                csv_summary << "\n";
+            }
+            csv_summary.close();
+            std::cout << "Summary CSV file written to: " << csv_summary_path << std::endl;
         }
     }
     
