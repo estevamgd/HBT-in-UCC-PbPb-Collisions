@@ -56,6 +56,7 @@ void coulomb_correction() {
     // ...HERE
     // Getting how many entries
     Long64_t nentries = t->GetEntries();
+    double d_nentries = t->GetEntries();
 
     // Setting canvases
     TCanvas *c1 = new TCanvas("c1", "", 7680, 4320);
@@ -66,12 +67,20 @@ void coulomb_correction() {
     int numCanvases = 3;
 
     // Setting histograms
-    TH1D *h1 = cHist("h1", "qinv[GeV]", "#Pairs/bin", nentries, -0.1, 1.1, 0, 0, 0, 920);
-    TH1D *h2 = cHist("h2", "qinv[GeV]", "#Pairs/bin", nentries, -0.1, 1.1, 0, 0, 0, 920);
-    TH1D *h3 = cHist("h3", "", "", nentries, -0.1, 1.1, 0, 0, 0, 632);
-    TH1D *h4 = cHist("h4", "", "", nentries, -0.1, 1.1, 0, 0, 0, 632);
+    double ninterval = 1., nlength = 0.02, nscale = 1./1.;
 
-    TH1D *tonormhist[] = {h1, h2, h3, h4};
+    double nnscale = numBins(ninterval, nlength, nscale);
+    TH1D* h11 = new TH1D("h11", "", nnscale, 0., 1.);
+    TH1D* h22 = new TH1D("h22", "", nnscale, 0., 1.);
+    TH1D* h33 = new TH1D("h33", "", nnscale, 0., 1.);
+    TH1D* h44 = new TH1D("h44", "", nnscale, 0., 1.);
+    /*
+    TH1D *h1 = cHist("h1", "qinv[GeV]", "#Pairs/bin", 0., 1., ninterval, nlength, nscale);
+    TH1D *h2 = cHist("h2", "qinv[GeV]", "#Pairs/bin", 0., 1., ninterval, nlength, nscale);
+    TH1D *h3 = cHist("h3", "", "", 0., 1., ninterval, nlength, nscale);
+    TH1D *h4 = cHist("h4", "", "", 0., 1., ninterval, nlength, nscale);
+    */
+    TH1D *tonormhist[] = {h11, h22, h33, h44};
     int numTonorm = 4;
 
     // Filling histograms
@@ -80,13 +89,12 @@ void coulomb_correction() {
 
         if (HFsumET > 100 && HFsumET < 375) { // This selects a centrality
             for (int k = 0; k < NOSpair; k++) {
-                h1->Fill(qinvSigOS[k]);
-                h3->Fill(qinvSigOS[k], coulombWOS[k]);
-
+                h33->Fill(qinvSigOS[k], coulombWOS[k]);
+                h11->Fill(qinvSigOS[k]);
             }
             for (int l = 0; l < NSSpair; l++) {
-                h2->Fill(qinvSigSS[l]);
-                h4->Fill(qinvSigSS[l], coulombWSS[l]);
+                h44->Fill(qinvSigSS[l], coulombWSS[l]);
+                h22->Fill(qinvSigSS[l]);
             }    
         }
 
@@ -99,36 +107,81 @@ void coulomb_correction() {
     Double_t scale = 1;
     normalizer(tonormhist, numTonorm, scale);
     
-    // Dividing SS/OS
-    TH1D *sr = (TH1D *)h2->Clone("sr");
-    TH1D *sr_cor = (TH1D *)h4->Clone("sr_cor");
-    sr->Divide(h1);
-    sr_cor->Divide(h3);
+    // Dividing SS/OS2
+    TH1D *sr = (TH1D *)h22->Clone("sr");
+    TH1D *sr_cor = (TH1D *)h44->Clone("sr_cor");
+    sr->Divide(h11);
+    sr_cor->Divide(h33);
 
     // Adding Title
     sr->SetTitle("CMS Open Data 2011 - PbPb 2.76 TeV");
-    h1->SetTitle("CMS Open Data 2011 - PbPb 2.76 TeV");
-    h2->SetTitle("CMS Open Data 2011 - PbPb 2.76 TeV");
+    h11->SetTitle("CMS Open Data 2011 - PbPb 2.76 TeV");
+    h22->SetTitle("CMS Open Data 2011 - PbPb 2.76 TeV");
 
-    // Adding labels to single ratio histogram
+    // Adjusting fill colors
+    h11->SetFillColorAlpha(kRed, 0.5);
+    h22->SetFillColorAlpha(kRed, 0.5);
+    h33->SetFillColorAlpha(kBlue, 0.5);
+    h44->SetFillColorAlpha(kBlue, 0.5);
+    sr->SetFillColorAlpha(kRed, 0.5);
+    sr_cor->SetFillColorAlpha(kBlue, 0.5);
+
+    // Adjusting fill colors
+    h11->SetLineColor(kRed);
+    h22->SetLineColor(kRed);
+    h33->SetLineColor(kBlue);
+    h44->SetLineColor(kBlue);
+    sr->SetLineWidth(4);
+    sr->SetLineColor(kRed);
+    sr_cor->SetLineWidth(4);
+    sr_cor->SetLineColor(kBlue);
+
+    // Set titles and axis labels
+    h11->GetXaxis()->SetTitle("qinv[GeV]");
+    h11->GetYaxis()->SetTitle("#Pairs/bin");
+
+    h22->GetXaxis()->SetTitle("qinv[GeV]");
+    h22->GetYaxis()->SetTitle("#Pairs/bin");
+
+    h33->GetXaxis()->SetTitle("qinv[GeV]");
+    h33->GetYaxis()->SetTitle("#Pairs/bin");
+
+    h44->GetXaxis()->SetTitle("qinv[GeV]");
+    h44->GetYaxis()->SetTitle("#Pairs/bin");
+
     sr->GetXaxis()->SetTitle("qinv[GeV]");
     sr->GetYaxis()->SetTitle("Single Ratio SS/OS");
+
+    sr_cor->GetXaxis()->SetTitle("qinv[GeV]");
+    sr_cor->GetYaxis()->SetTitle("Single Ratio SS/OS");
     
+    // Set label sizes
+    h11->GetXaxis()->SetLabelSize(0.04);
+    h22->GetYaxis()->SetLabelSize(0.04);
+    h33->GetYaxis()->SetLabelSize(0.04);
+    h44->GetYaxis()->SetLabelSize(0.04);
+    sr->GetYaxis()->SetLabelSize(0.04);
+    sr_cor->GetYaxis()->SetLabelSize(0.04);
+
+    // Adjust title font size and offset
+    /*sr->GetXaxis()->SetTitleSize(0.05);
+    sr->GetYaxis()->SetTitleSize(0.05);
+    */
     // Single Ratio Legend
     TLegend *h1_legend = new TLegend(0.2, 0.7, 0.4, 0.9);
     h1_legend->AddEntry((TObject*)0, "Invariant 4-momentum", "");
     h1_legend->AddEntry((TObject*)0, "Opposite charge pairs", "");
     h1_legend->AddEntry((TObject*)0, "Centrality: 50-70%", "");
-    h1_legend->AddEntry(h1, "Without Coulomb Correction", "l");
-    h1_legend->AddEntry(h3, "With Coulomb Correction", "l");
+    h1_legend->AddEntry(h11, "Without Coulomb Correction", "l");
+    h1_legend->AddEntry(h33, "With Coulomb Correction", "l");
 
     // Single Ratio Legend
     TLegend *h2_legend = new TLegend(0.2, 0.7, 0.4, 0.9);
     h2_legend->AddEntry((TObject*)0, "Invariant 4-momentum", "");
     h2_legend->AddEntry((TObject*)0, "Same charge pairs", "");
     h2_legend->AddEntry((TObject*)0, "Centrality: 50-70%", "");
-    h2_legend->AddEntry(h1, "Without Coulomb Correction", "l");
-    h2_legend->AddEntry(h3, "With Coulomb Correction", "l");
+    h2_legend->AddEntry(h11, "Without Coulomb Correction", "l");
+    h2_legend->AddEntry(h33, "With Coulomb Correction", "l");
 
     // Single Ratio Legend
     TLegend *sr_legend = new TLegend(0.7, 0.7, 0.9, 0.9);
@@ -138,8 +191,8 @@ void coulomb_correction() {
     sr_legend->AddEntry(sr_cor, "With Coulomb Correction", "l");
     
     // Setting y range in single ratio to 0.95<y<1.6
-    sr->GetYaxis()->SetRangeUser(0.95, 1.6);
-    sr_cor->GetYaxis()->SetRangeUser(0.95, 1.6);
+    sr->GetYaxis()->SetRangeUser(0.95, 1.4);
+    sr_cor->GetYaxis()->SetRangeUser(0.95, 1.4);
     /*
     // Setting x range in qinv to qinv<0.1
     h1->GetXaxis()->SetRangeUser(0,0.1);
@@ -147,20 +200,33 @@ void coulomb_correction() {
     h3->GetXaxis()->SetRangeUser(0,0.1);
     h4->GetXaxis()->SetRangeUser(0,0.1);
     */
+    /*
+    h11->SetFillStyle(1001);
+    h22->SetFillStyle(1001);
+    h33->SetFillStyle(1001);
+    h44->SetFillStyle(1001);
+    sr->SetFillStyle(1001);
+    sr_cor->SetFillStyle(1001);
+    */
+    
+
     // Removing statistics box
-    TH1D *histograms[] = {h1, h2, h3, h4, sr, sr_cor};
+    TH1D *histograms[] = {h11, h22, h33, h44, sr, sr_cor};
     int numHistograms = 6;
 
     no_statbox(histograms, numHistograms);
 
+    // sr->SetMarkerStyle(4);
+    // sr_cor->SetMarkerStyle(4);
+   
     // Drawing
-    c1->cd(); gPad->SetGrid(); gPad->SetLeftMargin(0.15); h1->Draw(); h3->Draw("same"); h1_legend->Draw();
-    c2->cd(); gPad->SetGrid(); gPad->SetLeftMargin(0.15); h2->Draw(); h4->Draw("same"); h2_legend->Draw();
-    c3->cd(); gPad->SetGrid(); gPad->SetLeftMargin(0.15); sr->Draw(); sr_cor->Draw("same"); sr_legend->Draw();
+    c1->cd(); gPad->SetGrid(); gPad->SetLeftMargin(0.15); h33->Draw("HIST"); h11->Draw("HIST SAME"); h1_legend->Draw();
+    c2->cd(); gPad->SetGrid(); gPad->SetLeftMargin(0.15); h44->Draw("HIST"); h22->Draw("HIST SAME"); h2_legend->Draw();
+    c3->cd(); gPad->SetGrid(); gPad->SetLeftMargin(0.15); sr_cor->Draw("HIST"); sr->Draw("HIST SAME"); sr_legend->Draw();
     
     // Saving image
-    const char *path = "./imgs/teste/";
-    const char *prefix = "teste-coulomb-correction";
+    const char *path = "./imgs/final/";
+    const char *prefix = "final-coulomb-correction";
     const char *file_type = "png";
     save_canvas_images(canvases, numCanvases, path, prefix, file_type);
 

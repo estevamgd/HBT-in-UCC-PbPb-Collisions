@@ -1,5 +1,5 @@
 #define postAnalyzer_cxx
-#include "postAnalyzer.h"
+#include "../include/postAnalyzer.h"
 #include <TH2.h>
 #include <TStyle.h>
 #include <TCanvas.h>

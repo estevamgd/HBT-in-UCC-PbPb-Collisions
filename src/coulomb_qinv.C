@@ -57,6 +57,7 @@ void coulomb_qinv() {
     // ...HERE
     // Getting how many entries
     Long64_t nentries = t->GetEntries();
+    double d_nentries = t->GetEntries();
 
     // Setting canvases
     TCanvas *c1 = new TCanvas("c1", "", 7680, 4320);
@@ -65,9 +66,11 @@ void coulomb_qinv() {
     TCanvas *canvases[] = {c1, c2};
     int numCanvases = 2;
 
+    double bin_scale = 50.;
+
     // Setting histograms
-    TH2D *hOS = new TH2D("hOS", "CMS Open Data 2011 - PbPb 2.76 TeV", 100, -0.1, 1.1, 100, 0, 2);
-    TH2D *hSS = new TH2D("hSS", "CMS Open Data 2011 - PbPb 2.76 TeV", 100, -0.1, 1.1, 100, 0, 2);
+    TH2D *hOS = new TH2D("hOS", "CMS Open Data 2011 - PbPb 2.76 TeV", bin_scale, 0., 1., 100, 0, 2);
+    TH2D *hSS = new TH2D("hSS", "CMS Open Data 2011 - PbPb 2.76 TeV", bin_scale, 0., 1., 100, 0, 2);
 
     TH2D *histograms[] = {hOS, hSS};
     int numHistograms = 2;
@@ -113,8 +116,8 @@ void coulomb_qinv() {
     c2->cd(); gPad->SetGrid(); gPad->SetLeftMargin(0.15); profhSSX->Draw("BAR");
     
     // Saving image
-    const char *path = "./imgs/teste/";
-    const char *prefix = "teste-coulomb-qinv";
+    const char *path = "./imgs/final/";
+    const char *prefix = "final-coulomb-qinv";
     const char *file_type = "png";
     save_canvas_images(canvases, numCanvases, path, prefix, file_type);
 

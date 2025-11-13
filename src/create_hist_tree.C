@@ -63,6 +63,7 @@ void create_hist_tree() {
     // ...HERE
     // Getting how many entries
     Long64_t nentries = t->GetEntries();
+    double d_nentries = t->GetEntries();
 
     // Setting canvases
     TCanvas *c1 = new TCanvas("c1", "", 1920, 1080);
@@ -71,8 +72,12 @@ void create_hist_tree() {
     int numCanvases = 1;
 
     // Setting histograms
-    TH1D *h1 = cHist("h1", "qinv[GeV]", "#Pairs/bin", nentries, -0.01, 1.01, 0, 0, 0, 932, 1, 1);
-    TH1D *h2 = cHist("h2", "", "", nentries, -0.01, 1.01, 0, 0, 0, 932, 1, 1);
+    double ninterval = 1., nlength = 0.02, nscale = 1./1.;
+
+    TH1D *h1 = cHist("h1", "", "",  0., 1., ninterval, nlength, nscale, 0, 0, 0, 932, 1, 1);
+    TH1D *h2 = cHist("h2", "", "",  0., 1., ninterval, nlength, nscale, 0, 0, 0, 932, 1, 1);
+    TH1D *h3 = cHist("h3", "", "",  0., 1., ninterval, nlength, nscale, 0, 0, 0, 932, 1, 1);
+    TH1D *h4 = cHist("h4", "", "",  0., 1., ninterval, nlength, nscale, 0, 0, 0, 932, 1, 1);
 
     // Filling histograms
     for (Long64_t i = 0; i < nentries; i++) {
@@ -81,10 +86,12 @@ void create_hist_tree() {
         if (HFsumET > 100 && HFsumET < 375) { // This selects a centrality
             for (int k = 0; k < NOSpair; k++) {
                 h1->Fill(qinvSigOS[k]);
+                h3->Fill(qinvSigOS[k], coulombWOS[k]);
 
             }
             for (int l = 0; l < NSSpair; l++) {
                 h2->Fill(qinvSigSS[l]);
+                h4->Fill(qinvSigSS[l], coulombWSS[l]);
             }    
         }
 
@@ -97,9 +104,11 @@ void create_hist_tree() {
 
     TH1D *h1_normalized = (TH1D *)h1->Clone("h1_normalized");
     TH1D *h2_normalized = (TH1D *)h2->Clone("h2_normalized");
+    TH1D *h3_normalized = (TH1D *)h3->Clone("h3_normalized");
+    TH1D *h4_normalized = (TH1D *)h4->Clone("h4_normalized");
     
-    TH1D *tonormhist[] = {h1_normalized, h2_normalized};
-    int numTonorm = 2;
+    TH1D *tonormhist[] = {h1_normalized, h2_normalized, h3_normalized, h4_normalized};
+    int numTonorm = 4;
 
     // Normalize histograms
     Double_t scale = 1;
@@ -107,8 +116,13 @@ void create_hist_tree() {
    
     // Dividing SS/OS
     TH1D *sr = (TH1D *)h2_normalized->Clone("sr");
+    TH1D *sr_cor = (TH1D *)h4_normalized->Clone("sr_cor");
+    
     sr->Divide(h1_normalized);
     sr->SetLineColor(kRed);
+
+    sr_cor->Divide(h3_normalized);
+    sr_cor->SetLineColor(kBlue);
 
     // Saving into a Tree
     TFile save_f2("data/50_70_qinv_normqinv_sr.root","RECREATE");
@@ -125,15 +139,20 @@ void create_hist_tree() {
 
     h1->Write();
     h2->Write();
+    h3->Write();
+    h4->Write();
     h1_normalized->Write();
     h2_normalized->Write();
+    h3_normalized->Write();
+    h4_normalized->Write();
     sr->Write();
+    sr_cor->Write();
 
     save_f2.Close();
     
     // Closing program
-    TH1D *histograms[] = {h1, h2, h1_normalized, h2_normalized, sr};
-    int numHistograms = 5;
+    TH1D *histograms[] = {h1, h2, h3, h4, h1_normalized, h2_normalized, h3_normalized, h4_normalized, sr, sr_cor};
+    int numHistograms = 10;
 
     close_program(canvases, numCanvases, histograms, numHistograms, fr);
     gBenchmark->Show("create_hist_tree");

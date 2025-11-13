@@ -57,6 +57,8 @@ void single_ratio() {
     // ...HERE
     // Getting how many entries
     Long64_t nentries = t->GetEntries();
+    double d_nentries = t->GetEntries();
+
 
     // Setting canvases
     TCanvas *c1 = new TCanvas("c1", "", 7680, 4320);
@@ -65,8 +67,10 @@ void single_ratio() {
     int numCanvases = 1;
 
     // Setting histograms
-    TH1D *h1 = cHist("h1", "qinv[GeV]", "#Pairs/bin", nentries, -0.1, 1.1, 920, 0.3, 1, 632, 1, 1);
-    TH1D *h2 = cHist("h2", "", "", nentries, -0.1, 1.1, 0, 0, 0, 600, 1, 1);
+    double ninterval = 1., nlength = 0.02, nscale = 1./1.;
+
+    TH1D *h1 = cHist("h1", "qinv[GeV]", "#Pairs/bin", 0., 1., ninterval, nlength, nscale, 920, 1., 1001, 632, 1, 1);
+    TH1D *h2 = cHist("h2", "", "", 0., 1., ninterval, nlength, nscale, 920, 1., 1001, 632, 1, 1);
 
     TH1D *tonormhist[] = {h1, h2};
     int numTonorm = 2;
@@ -116,10 +120,10 @@ void single_ratio() {
     sr->SetStats(0);
 
     // Drawing the single ratio
-    c1->cd(); gPad->SetGrid(); gPad->SetLeftMargin(0.15); sr->Draw(); text->Draw();
+    c1->cd(); gPad->SetGrid(); gPad->SetLeftMargin(0.15); sr->Draw("HIST"); text->Draw();
     // Saving image
-    const char *path = "./imgs/final/";
-    const char *prefix = "final-normalizar-sr";
+    const char *path = "./imgs/teste/";
+    const char *prefix = "teste-normalizar-sr";
     const char *file_type = "png";
     save_canvas_images(canvases, numCanvases, path, prefix, file_type);
 

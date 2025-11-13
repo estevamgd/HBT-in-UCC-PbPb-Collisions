@@ -5,7 +5,8 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "/home/estevamgd/root/root_install/**",
-                "/home/estevamgd/root/root_install/include"
+                "/home/estevamgd/root/root_install/include",
+                "${workspaceFolder}/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

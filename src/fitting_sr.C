@@ -43,33 +43,33 @@ void fitting_sr() {
     }
 
     // Retrieve histograms
-    TH1D *h1 = (TH1D *)fr->Get("h1");
-    TH1D *h2 = (TH1D *)fr->Get("h2");
-    TH1D *h1_normalized = (TH1D *)fr->Get("h1_normalized");
-    TH1D *h2_normalized = (TH1D *)fr->Get("h2_normalized");
-    TH1D *sr = (TH1D *)fr->Get("sr");
+    TH1D *h3 = (TH1D *)fr->Get("h3");
+    TH1D *h4 = (TH1D *)fr->Get("h4");
+    TH1D *h3_normalized = (TH1D *)fr->Get("h3_normalized");
+    TH1D *h4_normalized = (TH1D *)fr->Get("h4_normalized");
+    TH1D *sr_cor = (TH1D *)fr->Get("sr_cor");
 
-    if (!h1 || !h2 || !h1_normalized || !h2_normalized || !sr) {
+    if (!h3 || !h4 || !h3_normalized || !h4_normalized || !sr_cor) {
         std::cerr << "Error: Histograms not found!" << std::endl;
         fr->Close();
         return;
     }
 
-    TH1D *histograms[] = {h1, h2, h1_normalized, h2_normalized, sr};
+    TH1D *histograms[] = {h3, h4, h3_normalized, h4_normalized, sr_cor};
     int numHistograms = 5;
     
     // Horizontal line from x1 to x2 at y
     double y = 1.;  // Adjust this to your needs
-    TLine *line = new TLine(sr->GetXaxis()->GetXmin(), y, sr->GetXaxis()->GetXmax(), y);
+    TLine *line = new TLine(sr_cor->GetXaxis()->GetXmin(), y, sr_cor->GetXaxis()->GetXmax(), y);
     line->SetLineColor(kBlack);
     line->SetLineStyle(kDashed);
     line->SetLineWidth(1);
 
     // Fixing some colors
-    sr->SetLineWidth(1);
-    sr->SetLineColor(kBlack);
-    sr->SetMarkerStyle(4);
-    sr->SetMarkerSize(0.8);
+    sr_cor->SetLineWidth(1);
+    sr_cor->SetLineColor(kBlack);
+    sr_cor->SetMarkerStyle(4);
+    sr_cor->SetMarkerSize(0.8);
 
     // Setting fits
     TF1 *fit_exp = new TF1("fit_exp", func1_exp, 0.0, 1.0, 4);
@@ -102,9 +102,9 @@ void fitting_sr() {
 
     // Fitting
     TFitResultPtr res_exp, res_gauss, res_levy;
-    res_exp = sr->Fit(fit_exp, "S R");
-    res_gauss = sr->Fit(fit_gauss, "S R");
-    res_levy = sr->Fit(fit_levy, "S R");
+    res_exp = sr_cor->Fit(fit_exp, "S R");
+    res_gauss = sr_cor->Fit(fit_gauss, "S R");
+    res_levy = sr_cor->Fit(fit_levy, "S R");
 
     // Getting information
     Double_t chi2_exp = res_exp->Chi2();
@@ -122,14 +122,14 @@ void fitting_sr() {
     Double_t p_value_levy = TMath::Prob(chi2_levy, ndf_levy);
 
     // Adding labels
-    sr->SetTitle("CMS Open Data 2011 - PbPb 2.76 TeV");
-    sr->GetXaxis()->SetTitle("q_{inv} [GeV]");
-    sr->GetYaxis()->SetTitle("Single Ratio SS/OS");
+    sr_cor->SetTitle("CMS Open Data 2011 - PbPb 2.76 TeV");
+    sr_cor->GetXaxis()->SetTitle("q_{inv} [GeV]");
+    sr_cor->GetYaxis()->SetTitle("Single Ratio SS/OS");
 
     // Adding legend
     TLegend *h1_legend = new TLegend(0.7, 0.4, 0.9, 0.9); 
     h1_legend->AddEntry((TObject*)0, "50-70%", "");
-    h1_legend->AddEntry(sr, "Data");
+    h1_legend->AddEntry(sr_cor, "Data");
     h1_legend->AddEntry(fit_exp, "Exponential Fit", "l");
     h1_legend->AddEntry((TObject*)0, Form("  R = %.2f #pm %.2f", fit_exp->GetParameter(2), fit_exp->GetParError(2)), "");
     h1_legend->AddEntry((TObject*)0, Form("  #lambda = %.2f #pm %.2f", fit_exp->GetParameter(1), fit_exp->GetParError(1)), "");
@@ -146,13 +146,14 @@ void fitting_sr() {
     h1_legend->AddEntry((TObject*)0, Form("  p-value = 0.0"), "");
 
     // Setting y range to 0.95<y<1.6
-    sr->GetYaxis()->SetRangeUser(0.95, 1.6);
+    sr_cor->GetYaxis()->SetRangeUser(0.95, 2.1);
+    sr_cor->GetXaxis()->SetRangeUser(0.00, 0.3);
     
     // Removing statistics box
-    sr->SetStats(0);
+    sr_cor->SetStats(0);
 
     // Drawing the single ratio
-    c1->cd(); sr->Draw(); 
+    c1->cd(); sr_cor->Draw(); 
     fit_exp->Draw("SameL"); 
     fit_gauss->Draw("SameL"); 
     fit_levy->Draw("SameL"); 

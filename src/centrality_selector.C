@@ -34,7 +34,7 @@ void centrality_selector(){
     Float_t coulombWOS[NOSpair], coulombWSS[NSSpair], qinvSigSS[NSSpair], qinvSigOS[NOSpair], 
             trkPt[Ntrk], trkEta[Ntrk], trkPhi[Ntrk], trkPtRes[Ntrk], 
             trkDxySig[Ntrk], trkNpixLayers[Ntrk], trkDzSig[Ntrk];
-
+    int selectionVarI = 100, selectionVarF = 375;
     // Arrays of variables
     void* variables[] = {
         &HFsumET, &Ntrk, &NSSpair, &NOSpair, coulombWOS, coulombWSS, qinvSigOS, qinvSigSS, 
@@ -66,11 +66,13 @@ void centrality_selector(){
     int numCanvases = 3;
     
     // Setting histograms
-    TH1D *h1 = cHist("h1", "qinv[GeV]", "#Pairs/bin", nentries, -0.1, 1.3, 0, 0, 0, 632, 1, 1);
-    TH1D *h2 = cHist("h2", "", "", nentries, -0.1, 1.3, 0, 0, 0, 600, 1, 1); // <- tentar 0.3, 0.5 ou tentar outro tipo de fill style/ sem fill style
-    TH1D *h3 = cHist("h3", "", "", nentries, -0.1, 1.3, 0, 0, 0, 632, 1, 2);
-    TH1D *h4 = cHist("h4", "", "", nentries, -0.1, 1.3, 0, 0, 0, 600, 1, 2);
-    TH1D *h5 = cHist("h5", "HFsumET[GeV]", "#Events/bin", nentries, 80, 390, 632);
+    double ninterval = 1., nlength = 0.02, nscale = 1./1.;
+
+    TH1D *h1 = cHist("h1", "qinv[GeV]", "#Pairs/bin", 0, 1., ninterval, nlength, nscale, 0, 0, 0, 632, 1, 1, 4);
+    TH1D *h2 = cHist("h2", "", "", 0, 1., ninterval, nlength, nscale, 0, 0, 0, 600, 1, 1, 4); // <- tentar 0.3, 0.5 ou tentar outro tipo de fill style/ sem fill style
+    TH1D *h3 = cHist("h3", "", "", 0, 1., ninterval, nlength, nscale, 0, 0, 0, 632, 1, 2, 4);
+    TH1D *h4 = cHist("h4", "", "", 0, 1., ninterval, nlength, nscale, 0, 0, 0, 600, 1, 2, 4);
+    TH1D *h5 = cHist("h5", "HFsumET[GeV]", "#Events/bin", 100, 375, ninterval, nlength, nscale, 632, 1., 1001, 632, 1, 1001, 4);
 
     TH1D *histograms[] = {h1, h2, h3, h4, h5};
     int numHistograms = 5;
@@ -79,7 +81,7 @@ void centrality_selector(){
     for (Long64_t i = 0; i < nentries; i++) {
         t->GetEntry(i);
 
-        if (HFsumET > 100 && HFsumET < 375) {
+        if (HFsumET > selectionVarI && HFsumET < selectionVarF) {
             h5->Fill(HFsumET);
 
             for (int k = 0; k < NOSpair; k++) {
@@ -115,16 +117,20 @@ void centrality_selector(){
     legend2->AddEntry(h1, "OS qinvSig (100 < HFsumET < 375 GeV)", "l");
     legend2->AddEntry(h2, "SS qinvSig (100 < HFsumET < 375 GeV)", "l");
 
-    c1->cd(); gPad->SetGrid(); gPad->SetLeftMargin(0.15); h1->Draw(); h2->Draw("same"); h3->Draw("same"); h4->Draw("same");
+    c1->cd(); gStyle->SetOptStat(0); gPad->SetGrid(); gPad->SetLeftMargin(0.15); h1->Draw("HIST"); h2->Draw("HIST SAME"); h3->Draw("HIST SAME"); h4->Draw("HIST SAME");
     legend->Draw();
 
-    c2->cd(); gPad->SetGrid(); gPad->SetLeftMargin(0.15); h1->Draw(); h2->Draw("same"); 
+    c2->cd(); gStyle->SetOptStat(0); gPad->SetGrid(); gPad->SetLeftMargin(0.15); h1->Draw("HIST"); h2->Draw("HIST SAME"); 
     legend2->Draw();
 
-    c3->cd(); gPad->SetGrid(); gPad->SetLeftMargin(0.15); h5->Draw();
+    c3->cd(); gStyle->SetOptStat(0); gPad->SetGrid(); gPad->SetLeftMargin(0.15); h5->Draw("HIST");
+    
+    const char *hpath = "./data/test/";
+    const char *hprefix = "central-selec";
+    save_histograms(histograms, numHistograms, hpath, hprefix, selectionVarI, selectionVarF);
 
-    const char *path = "./imgs/final/";
-    const char *prefix = "final-central-selec";
+    const char *path = "./imgs/teste/";
+    const char *prefix = "test-central-selec";
     const char *file_type = "png";
     save_canvas_images(canvases, numCanvases, path, prefix, file_type);
     close_program(canvases, numCanvases, histograms, numHistograms, fr);
