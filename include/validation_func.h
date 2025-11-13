@@ -79,7 +79,7 @@ std::map<std::string, double> compareHists(
     for (int i = 0; i < nHists; ++i) {
         canvas->cd(i + 1);
         gPad->SetLeftMargin(0.15); 
-        gPad->SetTopMargin(0.08); // Ensure space for headers
+        gPad->SetTopMargin(0.08);
 
         // --- Get Histograms ---
         TH1D* h1 = (TH1D*)file1->Get(hist_names1[i].c_str());
@@ -216,12 +216,11 @@ void plot_timing_comparison(
     const int n_bins = centrality_labels.size();
     if (n_bins == 0) { std::cerr << "Erro: Não há dados para plotar." << std::endl; return; }
 
-    // --- TGraph Creation (Normalization is now done *before* calling this) ---
     double max_normalized_time = 0.0;
     double min_normalized_time = DBL_MAX; 
     std::vector<TGraph*> graphs;
     std::vector<double> x_values(n_bins);
-    std::iota(x_values.begin(), x_values.end(), 0.5); // Fill x_values with 0.5, 1.5, 2.5...
+    std::iota(x_values.begin(), x_values.end(), 0.5); 
 
     for (int i = 0; i < n_graphs_total; ++i) {
         const std::vector<double>& normalized_times = all_normalized_timings[i]; // Get pre-normalized data
@@ -238,8 +237,8 @@ void plot_timing_comparison(
     c->SetTopMargin(0.08); c->SetRightMargin(0.05);
     gStyle->SetOptStat(0); gStyle->SetPalette(kLake);
 
-    const char * frameTitle; // Title for axis labels only
-    TString rightHeaderText = "Timing"; // Text for top-right header
+    const char * frameTitle; 
+    TString rightHeaderText = "Timing"; 
     if (selectionVarType == ControlVar::CENTHF) frameTitle = ";Centrality (HFsumET);Time / Event (s)";
     else if (selectionVarType == ControlVar::MULT) frameTitle = ";Multiplicity (#Tracks);Time / Event (s)";
     else frameTitle = ";Centrality (%);Time / Event (s)";
@@ -491,10 +490,6 @@ void plotAverageRatios(
     delete c; delete frame; delete g_summary; delete legend; delete line;
 }
 
-
-// ===================================================================
-// MODIFIED FUNCTION: runFullValidation
-// ===================================================================
 void runFullValidation(
     ControlVar methodSelectionVar,
     const std::vector<double>& centralityBins,
@@ -641,14 +636,10 @@ void runFullValidation(
 
     
     // --- PLOT TIMING AND RATIO GRAPHS ---
-    
-    // ===================================================================
-    // --- 1. MODIFICATION: Create n_events_total vector ---
     std::vector<double> n_events_total;
     for(size_t i = 0; i < n_events_sig.size(); ++i) {
         n_events_total.push_back(n_events_sig[i] + n_events_mix[i]);
     }
-    // ===================================================================
 
 
     if (n_events_sig.empty()) { 
@@ -663,7 +654,7 @@ void runFullValidation(
                 int expanded_idx = j * n_metrics + k;
 
                 // ===================================================================
-                // --- 2. MODIFICATION: Select correct normalizer (Sig, Mix, or Total) ---
+                // --- 2. Select correct normalizer (Sig, Mix, or Total) ---
                 const std::string& label = time_labels_to_plot[k];
                 const std::vector<double>* n_events_to_use_ptr = &n_events_sig; // Default to Sig
 
@@ -713,8 +704,6 @@ void runFullValidation(
         std::cout << "Absolute timing plot finished." << std::endl;
 
         // --- Calculate and Plot Timing Ratios ---
-        // This section remains unchanged, as it correctly uses the *raw* times
-        // from 'all_timings_expanded' to calculate ratios.
         if (n_methods == 2) { 
             std::cout << "\n--- Plotting Timing Ratios ---" << std::endl;
             std::vector<std::vector<double>> all_timing_ratios(n_metrics);
