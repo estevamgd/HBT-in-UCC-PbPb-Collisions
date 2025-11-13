@@ -23,7 +23,11 @@
 #include <vector>
 #include <thread>
 #include <mutex>
+<<<<<<< HEAD
 #include <cmath>
+=======
+#include <cmath> // For std::isinf
+>>>>>>> 2b091b9659e95d3fd75285d7dfdd974665166055
 #include <chrono>
 #include <string>
 #include "data_func.h"
@@ -91,11 +95,19 @@ void processSignal(
             os      = (TH1D*)base_os->Clone(TString::Format("%s_clone_%p", base_os->GetName(), this));
             os_cor  = (TH1D*)base_os_cor->Clone(TString::Format("%s_clone_%p", base_os_cor->GetName(), this));
 
+<<<<<<< HEAD
+=======
+            // Reset clones to be empty
+>>>>>>> 2b091b9659e95d3fd75285d7dfdd974665166055
             ss->Reset();
             ss_cor->Reset();
             os->Reset();
             os_cor->Reset();
         }
+<<<<<<< HEAD
+=======
+        // Destructor to clean up cloned histograms
+>>>>>>> 2b091b9659e95d3fd75285d7dfdd974665166055
         ~LocalHistograms() {
             delete ss;
             delete ss_cor;
@@ -107,9 +119,17 @@ void processSignal(
     std::vector<std::thread> threads;
     std::vector<std::unique_ptr<LocalHistograms>> local_hists;
 
+<<<<<<< HEAD
     for (int i = 0; i < thread_count; ++i) {
         local_hists.push_back(std::make_unique<LocalHistograms>(h_qinvSS_signal_2l, h_qinvSSCor_signal_2l, h_qinvOS_signal_2l, h_qinvOSCor_signal_2l));
     }
+=======
+    // Create a set of local histograms for each thread
+    for (int i = 0; i < thread_count; ++i) {
+        local_hists.push_back(std::make_unique<LocalHistograms>(h_qinvSS_signal_2l, h_qinvSSCor_signal_2l, h_qinvOS_signal_2l, h_qinvOSCor_signal_2l));
+    }
+    // The task for each thread
+>>>>>>> 2b091b9659e95d3fd75285d7dfdd974665166055
     auto thread_task = [&](size_t start_p1, size_t end_p1, LocalHistograms* hists) {
         for (size_t p1 = start_p1; p1 < end_p1; p1++) {
             for (size_t p2 = p1 + 1; p2 < n_tracks; p2++) {
@@ -137,6 +157,10 @@ void processSignal(
         threads.emplace_back(thread_task, start_i, end_i, local_hists[t].get());
 
     }
+<<<<<<< HEAD
+=======
+    // Wait for all threads to finish
+>>>>>>> 2b091b9659e95d3fd75285d7dfdd974665166055
     for (auto& thread : threads) {
         thread.join();
     }

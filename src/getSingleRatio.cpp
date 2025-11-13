@@ -17,10 +17,18 @@
 void getSingleRatio(const char* ss_FileName, const char* ss_HistName,
                     const char* os_FileName, const char* os_HistName,
                     const char* outputPrefix, const char* outputHistName = "sr_cor",
+<<<<<<< HEAD
                     const char* plotHeaderText = "PbPb 2.76 TeV | Single Ratio") {
     ROOT::EnableImplicitMT();
     gStyle->SetOptStat(0);
     gStyle->SetPalette(kColorPrintableOnGrey);
+=======
+                    const char* plotHeaderText = "PbPb 2.76 TeV | Single Ratio",
+                    double xMin = 0.0, double xMax = 2.0) {
+    ROOT::EnableImplicitMT();
+    gStyle->SetOptStat(0);
+    gStyle->SetPalette(kLake);
+>>>>>>> 2b091b9659e95d3fd75285d7dfdd974665166055
 
     TFile *ssFile = TFile::Open(ss_FileName, "READ");
     if (!ssFile || ssFile->IsZombie()) {
@@ -79,7 +87,11 @@ void getSingleRatio(const char* ss_FileName, const char* ss_HistName,
     cRatio->SetBottomMargin(0.12);
     hRatio->GetYaxis()->SetTitleOffset(1.2);
 
+<<<<<<< HEAD
     //hRatio->GetXaxis()->SetRangeUser(xMin, xMax);
+=======
+    hRatio->GetXaxis()->SetRangeUser(xMin, xMax);
+>>>>>>> 2b091b9659e95d3fd75285d7dfdd974665166055
 
     hRatio->Draw("E1 PLC"); // Draw with errors, PLC for ROOT6 palette
     
@@ -127,6 +139,11 @@ int main() {
     double bin_low = 3200.0;
     double bin_high = 3300.0;
     
+<<<<<<< HEAD
+=======
+    double xMin = 0.0, xMax = 0.03;
+
+>>>>>>> 2b091b9659e95d3fd75285d7dfdd974665166055
     // Get the name of the selection variable (e.g., "CENTHF") from my_func.h
     const char* selectionVarName = getSelVarName(selectedControlVar);
 
@@ -171,7 +188,12 @@ int main() {
     getSingleRatio(dataFile.Data(), ssHist_cor,
                    dataFile.Data(), osHist_cor, // Both histograms are in the same file
                    outputPrefix_cor.Data(), outputHist_cor,
+<<<<<<< HEAD
                    plotHeader_cor.Data()); // <-- Set range to 0.0 - 0.3 GeV
+=======
+                   plotHeader_cor.Data(),
+                   xMin, xMax); // <-- Set range to 0.0 - 0.3 GeV
+>>>>>>> 2b091b9659e95d3fd75285d7dfdd974665166055
 
     // --- Analysis Set 2: Uncorrected Ratio (SS / OS) ---
     std::cout << "\n--- Running Analysis 2: Uncorrected Ratio ---" << std::endl;
@@ -197,7 +219,12 @@ int main() {
     getSingleRatio(dataFile.Data(), ssHist_uncor,
                    dataFile.Data(), osHist_uncor,
                    outputPrefix_uncor.Data(), outputHist_uncor,
+<<<<<<< HEAD
                    plotHeader_uncor.Data());
+=======
+                   plotHeader_uncor.Data(),
+                   xMin, xMax);
+>>>>>>> 2b091b9659e95d3fd75285d7dfdd974665166055
 
     std::cout << "\nAll Single Ratio creation processes finished." << std::endl;
     return 0;
