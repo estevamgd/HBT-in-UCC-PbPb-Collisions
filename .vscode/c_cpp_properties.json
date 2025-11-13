@@ -4,8 +4,8 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "/home/xiao/root-install/**",
-                "/home/xiao/root-install/include"
+                "/home/estevamgd/root/root_install/**",
+                "/home/estevamgd/root/root_install/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

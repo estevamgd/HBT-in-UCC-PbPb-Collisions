@@ -1,3 +1,8 @@
+#include <stdio.h>
+#include <iostream>
+#include <iomanip>
+#include <time.h>
+
 #include "TFile.h"
 #include "TTree.h"
 #include <TROOT.h>
@@ -6,49 +11,17 @@
 #include <TMath.h>
 #include "TCanvas.h"
 #include "TH1D.h"
-#include <stdio.h>
-#include <iostream>
-#include <iomanip>
-#include <time.h>
 #include <TStyle.h>
 #include "TLegend.h"
 #include <TText.h>
 #include <TBenchmark.h>
 #include <TLine.h>
 #include <TFitResult.h>
+
 #include "../include/my_func.h"
 #include "../include/normalizer.h"
 #include "../include/analyze_tools.h"
-
-
-// to reject a range in the fit -- in principle did not reject any range
-Double_t reject_range_min = 0.01;
-Double_t reject_range_max = 0.00001;
-
-// Exponential function + long range
-Double_t func1_exp(Double_t* x, Double_t* par){
-    Double_t v = 0;
-    if(reject_range_min<x[0] && x[0]<reject_range_max){TF1::RejectPoint();}
-    else{v= par[0]*(1 + par[1]*exp(-par[2]*x[0]/0.1973))*(1+par[3]*x[0]);}
-    return v;
-}
-
-// Gaussian function + long range
-Double_t func2_gauss(Double_t* x, Double_t* par){
-    Double_t v = 0;
-    if(reject_range_min<x[0] && x[0]<reject_range_max){TF1::RejectPoint();}
-    else{v= par[0]*(1 + par[1]*exp(-pow(par[2]*x[0]/0.1973,2.)))*(1+par[3]*x[0]);}
-    return v;
-} 
-
-// Levy function 
-Double_t func3_levy(Double_t* x, Double_t* par){
-    Double_t v = 0;
-    if(reject_range_min<x[0] && x[0]<reject_range_max){TF1::RejectPoint();}
-    else{v= par[0]*(1 + par[1]*exp(-pow(par[2]*x[0]/0.1973,par[4])))*(1+par[3]*x[0]);}
-    return v;
-}
-
+#include "../include/data_func.h"
 
 void fitting_sr() {
     ROOT::EnableImplicitMT();
@@ -188,8 +161,8 @@ void fitting_sr() {
 
     ///*    // comment/uncomment to save/show in TBrowser the image
     // Saving image
-    const char *path = "./imgs/teste/";
-    const char *prefix = "teste-fitting-sr";
+    const char *path = "./imgs/final/";
+    const char *prefix = "final-fitting-sr";
     const char *file_type = "png";
     save_canvas_images(canvases, numCanvases, path, prefix, file_type);
     

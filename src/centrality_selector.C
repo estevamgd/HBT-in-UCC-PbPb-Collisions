@@ -6,14 +6,16 @@
 #include <TMath.h>
 #include "TCanvas.h"
 #include "TH1D.h"
-#include <stdio.h>
-#include <iostream>
-#include <iomanip>
-#include <time.h>
 #include <TStyle.h>
 #include "TLegend.h"
 #include <TText.h>
 #include <TBenchmark.h>
+
+#include <stdio.h>
+#include <iostream>
+#include <iomanip>
+#include <time.h>
+
 #include "../include/my_func.h"
 #include "../include/normalizer.h"
 #include "../include/analyze_tools.h"
