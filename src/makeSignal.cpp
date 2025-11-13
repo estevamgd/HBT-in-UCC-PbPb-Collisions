@@ -603,34 +603,24 @@ int main(){
     const char* inputFile = "data/merged_2760PbPbMB_pixeltracks_UCC_skim.root";  
     const char* treeName  = "demo/TreeMBUCC";
 
-    int test_limit_sig = -1;
-    int test_limit_mix = -1;
-    // Define the centrality bins to analyze. The code will loop over adjacent pairs.
+    int test_limit_sig = -1; // -1 for no limit
+    int test_limit_mix = -1; // -1 for no limit
+
     std::vector<double> centralityBins = {3200, 3300}; 
-    // 0.5, 1, 5, 10, 30, 50, 70
-    // 3200, 3300, 3500, 3800
-
     ControlVar selectedControlVar = ControlVar::CENTHF;
-
-    // --- Loop over Bins and Execute Analysis ---
-    std::cout << "Starting analysis for " << centralityBins.size() - 1 << " bin(s)." << std::endl;
+    size_t repeats = 1; // This is to repeat the analysis multiple times for benchmarking
     
-    // Loop automatically handles the number of bins. Use size_t to avoid compiler warnings.
-    // Lets thest to be able to see the average
-    size_t repeats = 1;
-
+    std::cout << "Starting analysis for " << centralityBins.size() - 1 << " bin(s)." << std::endl;
     for (size_t j = 0; j < repeats; j++){
         for (size_t i = 0; i < centralityBins.size() - 1; ++i){
             double bin_low = centralityBins[i];
             double bin_high = centralityBins[i+1];
             
             std::cout << "\n--- ["<< j << "]Running for centrality bin: " << bin_low << "% - " << bin_high << "% ---" << std::endl;
-            
             sig_double_loop_parallel(inputFile, treeName, bin_low, bin_high, selectedControlVar, test_limit_sig, test_limit_mix);
             sig_double_loop(inputFile, treeName, bin_low, bin_high, selectedControlVar, test_limit_sig, test_limit_mix);
         }
     }
-    
     std::cout << "\nAnalysis finished." << std::endl;
 
     return 0;
