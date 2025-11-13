@@ -154,6 +154,6 @@ void create_hist_tree() {
     TH1D *histograms[] = {h1, h2, h3, h4, h1_normalized, h2_normalized, h3_normalized, h4_normalized, sr, sr_cor};
     int numHistograms = 10;
 
-    close_program(canvases, numCanvases, histograms, numHistograms, fr);
+    close_program(canvases, numCanvases, histograms, numHistograms);
     gBenchmark->Show("create_hist_tree");
 }

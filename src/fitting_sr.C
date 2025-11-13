@@ -72,7 +72,7 @@ void fitting_sr() {
     sr_cor->SetMarkerSize(0.8);
 
     // Setting fits
-    TF1 *fit_exp = new TF1("fit_exp", func1_exp, 0.0, 1.0, 4);
+    TF1 *fit_exp = new TF1("fit_exp", FitExp, 0.0, 1.0, 4);
     fit_exp->SetParameters(1.0, 1.0, 4.0, 0.0); 
     fit_exp->SetParName(0,"Const");
     fit_exp->SetParName(1,"#lambda");
@@ -81,7 +81,7 @@ void fitting_sr() {
     fit_exp->SetLineColor(kBlue); 
     fit_exp->SetLineWidth(2); 
 
-    TF1 *fit_gauss = new TF1("f_gauss", func2_gauss, 0.0, 1.0, 4);
+    TF1 *fit_gauss = new TF1("f_gauss", FitGauss, 0.0, 1.0, 4);
 	fit_gauss->SetParameters(1.0, 1.0, 4.0, 0.0);
 	fit_gauss->SetParName(0,"Const");
 	fit_gauss->SetParName(1,"#lambda"); 
@@ -90,7 +90,7 @@ void fitting_sr() {
     fit_gauss->SetLineColor(kRed); 
 	fit_gauss->SetLineWidth(2);
 
-    TF1 *fit_levy = new TF1("f_levy", func3_levy, 0.0, 1.0, 5);
+    TF1 *fit_levy = new TF1("f_levy", FitLevy, 0.0, 1.0, 5);
 	fit_levy->SetParameters(1.0, 1.0, 4.0, 0.0, 4.0);
 	fit_levy->SetParName(0,"Const");
 	fit_levy->SetParName(1,"#lambda");
@@ -160,6 +160,9 @@ void fitting_sr() {
     line->Draw("same");
     h1_legend->Draw();
 
+    TLegend *legends[] = {h1_legend};
+    int numLegends = 1;
+
     ///*    // comment/uncomment to save/show in TBrowser the image
     // Saving image
     const char *path = "./imgs/final/";
@@ -171,7 +174,8 @@ void fitting_sr() {
     delete fit_exp;
     delete fit_gauss;
     delete fit_levy;
-    close_program(canvases, numCanvases, histograms, numHistograms, fr);  
+
+    close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);  
     //*/    // comment/uncomment to save/show in TBrowser the image
 
     gBenchmark->Show("hsimple");

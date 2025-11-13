@@ -180,8 +180,11 @@ void hbt_analysis_perpheralPbPb() {
     const char *prefix = "all-histograms";
     const char *file_type = "png";
 
+    TLegend *legends[] = {};
+    int numLegends = 0;
+
     save_canvas_images(canvases, numCanvases, path, prefix, file_type);
 
     // close file
-    close_program(canvases, numCanvases, histograms, numHistograms, fr);
+    close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);
 }

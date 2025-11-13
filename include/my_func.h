@@ -383,10 +383,10 @@ void save_benchmark_chrono(const std::vector<double>& durations, const std::vect
 }
 
 // Deletes canvases, histograms, legends, and closes the TFile
-void close_program(TCanvas *canvases[], int numCanvases,
-    TH1D *histograms[], int numHistograms,
-    TLegend *legends[], int numLegends,
-    TFile *fr,
+void close_program(TCanvas *canvases[] = nullptr, int numCanvases = 0,
+    TH1D *histograms[] = nullptr, int numHistograms = 0,
+    TLegend *legends[] = nullptr, int numLegends = 0,
+    TFile *fr = nullptr,
     TH2D *histograms2d[] = nullptr, int numHistograms2d = 0)
 {
     // Delete Canvases
