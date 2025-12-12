@@ -24,8 +24,7 @@ void fitSingleRatio(const char* inputFileName, const char* histName,
     const char* outputPrefix,
     const char* centralityLabel = "N/A",
     double fitMin = 0.0, double fitMax = 1.0,
-    double plotXMin = 0.0, double plotXMax = 0.6) 
-{
+    double plotXMin = 0.0, double plotXMax = 0.6){
 ROOT::EnableImplicitMT();
 gStyle->SetOptStat(0);     
 gStyle->SetPalette(kColorPrintableOnGrey);
@@ -149,9 +148,7 @@ void processRatio(const std::string& searchPath, const char* controlVarName,
     const char* typeTag,      // e.g., "Cor", "Raw"
     const char* histName,     // e.g., "sr_cor", "sr_raw"
     double fitMin = 0.0, double fitMax = 1.0,
-    double plotXMin = 0.0, double plotXMax = 0.6) 
-{
-
+    double plotXMin = 0.0, double plotXMax = 0.6){
 std::cout << "\n--- Processing Ratio (" << typeTag << ") ---" << std::endl;
 
 // Construct generic file pattern: SingleRatio_[TAG]_[VAR]_[MIN]-[MAX]*.root
