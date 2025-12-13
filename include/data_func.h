@@ -112,10 +112,30 @@ Double_t KMod(Double_t *x, Double_t *par, Double_t *par2){  // Direct implementa
 }
 
 // Function to calculate qinv from two 4-momenta
-Double_t GetQ(const ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> &p1, const ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> &p2) {
+Double_t GetQ(const ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> &p1, 
+    const ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> &p2) {
     ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> Sum4V = p1+p2;
     Double_t q = Sum4V.M2() - 4*PI_MASS*PI_MASS;
     return (  q>0 ?  TMath::Sqrt(q) : -TMath::Sqrt(-q)  );
+}
+
+// QLong^2 calculation
+Double_t GetQLongSquared(const ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> &p1, 
+    const ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> &p2){
+    Double_t px1 = p1.Px(), py1 = p1.Py(), pz1 = p1.Pz(), e1  = p1.E(); 
+    Double_t px2 = p2.Px(), py2 = p2.Py(), pz2 = p2.Pz(), e2  = p2.E();
+
+    return 4*pow(pz1*e2 - pz2*e1, 2)/(pow((e1 + e2), 2) - pow((pz1 + pz2), 2));
+}
+
+// QLCMS calculation
+Double_t GetQLCMS(const ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> &p1, 
+    const ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> &p2){
+    Double_t px1 = p1.Px(), py1 = p1.Py(), pz1 = p1.Pz(), e1  = p1.E(); 
+    Double_t px2 = p2.Px(), py2 = p2.Py(), pz2 = p2.Pz(), e2  = p2.E();
+    Double_t qlongsqrd = GetQLongSquared(p1, p2);    
+
+    return sqrt(pow(px1 - px2, 2) + pow(py1 - py2, 2) + qlongsqrd);
 }
 
 #endif
