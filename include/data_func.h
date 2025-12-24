@@ -20,6 +20,11 @@ using namespace std;
 Double_t reject_range_min = 0.01;
 Double_t reject_range_max = 0.00001;
 
+// Foward declaration to avoid bugs
+Double_t KGamow  (Double_t *x, Double_t *par);
+Double_t KMod    (Double_t *x, Double_t *par, Double_t *par2);
+Double_t KCoulomb(Double_t *x, Double_t *par);
+
 // Exponential function + long range from: https://github.com/i5albg/hbt_analysis/blob/main/final_HBT.C#L44-L67
 Double_t FitExp(Double_t* x, Double_t* par){
     Double_t v = 0;
@@ -101,9 +106,9 @@ Double_t KCoulomb(Double_t *x, Double_t *par){
     Double_t E = 1. + A2 * exp( - B2 * x[0] ); // exponential smoothing
     Double_t F = 1. / (1. + pow(x[0]/q0,n)); // cutoff factor
 
-    Double_t kgamow = KGamow(x, par);
-    Double_t kmod = KMod(x, par, par2);
-    return 1./(F*(1./kgamow)*(1./kmod) + (1.-F)*E); 
+    Double_t gamow = KGamow(x, par);
+    Double_t mod = KMod(x, par, par2);
+    return 1./(F*(1./gamow)*(1./mod) + (1.-F)*E); 
 }
 
 // Modified Coulomb Correction
