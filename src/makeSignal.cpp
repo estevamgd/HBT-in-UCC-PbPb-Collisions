@@ -296,7 +296,7 @@ void sig_qinv_double_loop(
 
     // Prefix
     char prefix[100];
-    sprintf(prefix, "sig_double_loop_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+    sprintf(prefix, "sig_qinv_double_loop_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
 
     // Saving Benchmakrs
     const char *spath = "benchmarks";
@@ -574,7 +574,7 @@ void sig_qinv_double_loop_parallel(
     int numLegends = 8;
 
     char prefix[100];
-    sprintf(prefix, "sig_double_loop_parallel_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+    sprintf(prefix, "sig_qinv_double_loop_parallel_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
 
     const char *spath = "benchmarks";
     std::vector<double> durations = {duration_full, duration_signal, duration_mix};
@@ -867,7 +867,7 @@ void sig_qlcms_double_loop(
 
     // Prefix
     char prefix[100];
-    sprintf(prefix, "sig_double_loop_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+    sprintf(prefix, "sig_qlcms_double_loop_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
 
     // Saving Benchmakrs
     const char *spath = "benchmarks";
@@ -1144,7 +1144,7 @@ void sig_qlcms_double_loop_parallel(
     int numLegends = 8;
 
     char prefix[100];
-    sprintf(prefix, "sig_double_loop_parallel_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+    sprintf(prefix, "sig_qlcms_double_loop_parallel_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
 
     const char *spath = "benchmarks";
     std::vector<double> durations = {duration_full, duration_signal, duration_mix};
