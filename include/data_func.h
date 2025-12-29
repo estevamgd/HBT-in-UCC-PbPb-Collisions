@@ -53,8 +53,8 @@ Double_t FitLevy(Double_t* x, Double_t* par){
 Double_t FitLevy2(Double_t* x, Double_t* par){
     Double_t v = 0;
     Double_t par2[2];
-    par2[0] = par[1]; // R
-    par2[1] = par[2]; // alpha
+    par2[0] = par[1]; 
+    par2[1] = par[2]; 
 
     if(reject_range_min<x[0] && x[0]<reject_range_max){TF1::RejectPoint();}
     else{v= 1 - par[0] + par[0]*(1 + exp(-pow(par[1]*x[0]/HBARC,par[2])))*KCoulomb(x, par2);}
