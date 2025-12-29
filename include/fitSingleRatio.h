@@ -79,10 +79,17 @@ fitGauss->SetParameters(1.0, 0.5, 5.0, 0.0);
 fitGauss->SetLineColor(gStyle->GetColorPalette(150));
 fitGauss->SetLineWidth(2);
 
-TF1 *fitLevy = new TF1("fitLevy", FitLevy, fitMin, fitMax, 5);
-fitLevy->SetParNames("Const", "#lambda", "R (fm)", "#epsilon", "#alpha");
-fitLevy->SetParameters(1.0, 0.5, 5.0, 0.0, 1.2);
-fitLevy->SetParLimits(4, 0.5, 2.0);
+//TF1 *fitLevy = new TF1("fitLevy", FitLevy, fitMin, fitMax, 5);
+//fitLevy->SetParNames("Const", "#lambda", "R (fm)", "#epsilon", "#alpha");
+//fitLevy->SetParameters(1.0, 0.5, 5.0, 0.0, 1.2);
+//fitLevy->SetParLimits(4, 0.5, 2.0);
+//fitLevy->SetLineColor(gStyle->GetColorPalette(220));
+//fitLevy->SetLineWidth(2);
+
+TF1 *fitLevy = new TF1("fitLevy", FitLevy2, fitMin, fitMax, 3);
+fitLevy->SetParNames("#lambda", "R (fm)",  "#alpha");
+fitLevy->SetParameters(0.5, 5.0, 1.);
+fitLevy->SetParLimits(2, 0.5, 2.0);
 fitLevy->SetLineColor(gStyle->GetColorPalette(220));
 fitLevy->SetLineWidth(2);
 

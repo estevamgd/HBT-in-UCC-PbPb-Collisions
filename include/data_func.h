@@ -22,7 +22,7 @@ Double_t reject_range_max = 0.00001;
 
 // Foward declaration to avoid bugs
 Double_t KGamow  (Double_t *x, Double_t *par);
-Double_t KMod    (Double_t *x, Double_t *par, Double_t *par2);
+Double_t KMod    (Double_t *x, Double_t *par);
 Double_t KCoulomb(Double_t *x, Double_t *par);
 
 // Exponential function + long range from: https://github.com/i5albg/hbt_analysis/blob/main/final_HBT.C#L44-L67
@@ -52,8 +52,12 @@ Double_t FitLevy(Double_t* x, Double_t* par){
 // Levy function
 Double_t FitLevy2(Double_t* x, Double_t* par){
     Double_t v = 0;
+    Double_t par2[2];
+    par2[0] = par[1]; // R
+    par2[1] = par[2]; // alpha
+
     if(reject_range_min<x[0] && x[0]<reject_range_max){TF1::RejectPoint();}
-    else{v= 1 - par[0] + par[0]*(1 + exp(-pow(par[1]*x[0]/HBARC,par[2])))*KCoulomb(x, par);}
+    else{v= 1 - par[0] + par[0]*(1 + exp(-pow(par[1]*x[0]/HBARC,par[2])))*KCoulomb(x, par2);}
     return v;
 }
 
@@ -73,11 +77,6 @@ Double_t FitLevyDR(Double_t* x, Double_t* par){
     return v;
 }
 
-//  Gamow Factor from: https://github.com/csanadm/coulcorrlevyparam/blob/0c3d63e765762ec06d0eb66e42b95b8561e6a669/coulcorr_param.cc#L84-L88
-Double_t KGamow(Double_t *x, Double_t *par){
-    double eta = ALPHAEM*PI_MASS/(x[0]); //x[0] is Q = 2k = |p1-p2|
-    return ( M_PI*eta*2.0/(exp(2.0*M_PI*eta)-1) );
-}
 
 // Coulomb Correction
 Double_t KCoulomb(Double_t *x, Double_t *par){
@@ -87,18 +86,18 @@ Double_t KCoulomb(Double_t *x, Double_t *par){
     cD = 0.000001, cE = 0.000003, cF = 1.68883, dA = 0.00057, dB = -0.80527, 
     dC = -0.19261, dD = 2.77504, dE = 2.02951, dF = 1.07906;
 
-    Double_t A = pow((aA * par[2] + aB),2) + pow((aC * par[1] + aD),2) + aE * pow((par[2] * par[1] + 1),2);
-    Double_t B = (1. + bA*pow(par[1],bB) -pow(par[2],bC)) / (par[2]*par[2]*par[1]*(pow(par[2],bD)+bE*pow(par[1],bF)));
-    Double_t C = ((cA  + pow(par[2],cB) + cC*pow(par[1],cD))/cE)*(pow(par[2]/par[1],cF));
-    Double_t D = (dA + (pow(par[1],dB) + dC*pow(par[2],dF))/(pow(par[1],dD)*pow(par[2],dE)));
-    Double_t par2[4] = {A, B, C, D};
+    Double_t A = pow((aA * par[1] + aB),2) + pow((aC * par[1] + aD),2) + aE * pow((par[1] * par[0] + 1),2);
+    Double_t B = (1. + bA*pow(par[0],bB) -pow(par[1],bC)) / (par[1]*par[1]*par[0]*(pow(par[1],bD)+bE*pow(par[0],bF)));
+    Double_t C = ((cA  + pow(par[1],cB) + cC*pow(par[0],cD))/cE)*(pow(par[1]/par[0],cF));
+    Double_t D = (dA + (pow(par[0],dB) + dC*pow(par[1],dF))/(pow(par[0],dD)*pow(par[1],dE)));
+    Double_t par2[6] = {par[0], par[1], A, B, C, D};
 
     Double_t Aa = 0.126253, Ab = 0.05385, Ac = -0.00913, Ad = -0.01846,
     Ae = 0.00085, Af = 0.00042, Ba = 19.31620, Bb = 5.58961, Bc = 2.26264, 
     Bd = -1.28486, Be = -0.08216, Bf = 0.02384;
 
-    Double_t A2 = Aa + Ab*par[2] + Ac*par[1] + Ad*par[2]*par[1] + Ae*par[1]*par[1] + Af*par[2]*par[2]*par[1]*par[1];
-    Double_t B2 = Ba + Bb*par[2] + Bc*par[1] + Bd*par[2]*par[1] + Be*par[1]*par[1] + Bf*par[2]*par[2]*par[1]*par[1];
+    Double_t A2 = Aa + Ab*par[1] + Ac*par[0] + Ad*par[1]*par[0] + Ae*par[0]*par[0] + Af*par[1]*par[1]*par[0]*par[0];
+    Double_t B2 = Ba + Bb*par[1] + Bc*par[0] + Bd*par[1]*par[0] + Be*par[0]*par[0] + Bf*par[1]*par[1]*par[0]*par[0];
 
     Double_t q0 = 0.07;
     Double_t n = 20.0;
@@ -107,13 +106,19 @@ Double_t KCoulomb(Double_t *x, Double_t *par){
     Double_t F = 1. / (1. + pow(x[0]/q0,n)); // cutoff factor
 
     Double_t gamow = KGamow(x, par);
-    Double_t mod = KMod(x, par, par2);
+    Double_t mod = KMod(x, par2);
     return 1./(F*(1./gamow)*(1./mod) + (1.-F)*E); 
 }
 
 // Modified Coulomb Correction
-Double_t KMod(Double_t *x, Double_t *par, Double_t *par2){  // Direct implementation from paper
-    return 1. + (par2[0]*((PREFACTOR*par[1])/(par[2])))/(1. + par2[1]*x[0]*par[1]/(par[2]*HBARC) + par2[2]*pow(x[0]*par[1]/(par[2]*HBARC),2) + par2[3]*pow(x[0]*par[1]/(par[2]*HBARC),4));
+Double_t KMod(Double_t *x, Double_t *par2){  // Direct implementation from paper
+    return 1. + (par2[2]*((PREFACTOR*par2[0])/(par2[1])))/(1. + par2[3]*x[0]*par2[0]/(par2[1]*HBARC) + par2[4]*pow(x[0]*par2[0]/(par2[1]*HBARC),2) + par2[5]*pow(x[0]*par2[0]/(par2[1]*HBARC),4));
+}
+
+//  Gamow Factor from: https://github.com/csanadm/coulcorrlevyparam/blob/0c3d63e765762ec06d0eb66e42b95b8561e6a669/coulcorr_param.cc#L84-L88
+Double_t KGamow(Double_t *x, Double_t *par){
+    double eta = ALPHAEM*PI_MASS/(x[0]); //x[0] is Q = 2k = |p1-p2|
+    return ( M_PI*eta*2.0/(exp(2.0*M_PI*eta)-1) );
 }
 
 // Function to calculate qinv from two 4-momenta
