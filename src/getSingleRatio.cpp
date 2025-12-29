@@ -14,7 +14,8 @@
 #include "../include/normalizer.h"
 
 
-void getSingleRatio(const char* ss_FileName, const char* ss_HistName,
+void getSingleRatio(Double_t q1, Double_t q2,
+                    const char* ss_FileName, const char* ss_HistName,
                     const char* os_FileName, const char* os_HistName,
                     const char* outputPrefix, const char* outputHistName = "sr_cor",
                     const char* plotHeaderText = "PbPb 2.76 TeV | Single Ratio") {
@@ -60,7 +61,7 @@ void getSingleRatio(const char* ss_FileName, const char* ss_HistName,
     TH1D *tonormhist[] = {hSS_norm, hOS_norm};
     int numTonorm = 2;
     Double_t scale = 1;
-    normalizer(tonormhist, numTonorm, scale);
+    normalizer(tonormhist, numTonorm, q1, q2, scale);
 
     TH1D *hRatio = (TH1D*)hSS_norm->Clone(outputHistName);
     hRatio->Divide(hOS_norm);
@@ -127,64 +128,121 @@ int main() {
     
     const char* selectionVarName = getSelVarName(selectedControlVar);
 
-    TString searchPattern = TString::Format(
-        "./data/signal_mix/sig_double_loop*%s_%f-%f*.root", 
+    TString searchPatternQLCMS = TString::Format(
+        "./data/signal_mix/sig_qlcms_double_loop*%s_%f-%f*.root", 
         selectionVarName, bin_low, bin_high
     );
 
+    TString searchPatternQinv = TString::Format(
+        "./data/signal_mix/sig_qinv_double_loop*%s_%f-%f*.root", 
+        selectionVarName, bin_low, bin_high
+    );
+    
     // Use findFile (from my_func.h) to get the newest file matching the pattern
-    TString dataFile = findFile(searchPattern);
+    TString dataFileQinv = findFile(searchPatternQinv);
+    TString dataFileQLCMS = findFile(searchPatternQLCMS);
 
-    if (dataFile.IsNull()) {
-        std::cerr << "Error: No data file found matching pattern: " << searchPattern << std::endl;
+    if (dataFileQinv.IsNull()) {
+        std::cerr << "Error: No data file found matching pattern: " << searchPatternQinv << std::endl;
         std::cerr << "Please run the 'sig_double_loop' or 'sig_double_loop_parallel' analysis first." << std::endl;
         return 1;
     }
-    std::cout << "Found data file: " << dataFile << std::endl;
+    if (dataFileQLCMS.IsNull()) {
+        std::cerr << "Error: No data file found matching pattern: " << searchPatternQLCMS << std::endl;
+        std::cerr << "Please run the 'sig_double_loop' or 'sig_double_loop_parallel' analysis first." << std::endl;
+        return 1;
+    }
 
-    // --- Analysis Set 1: Corrected Ratio ---
-    std::cout << "\n--- Running Analysis 1: Corrected Ratio ---" << std::endl;
+    std::cout << "Found data file: " << dataFileQinv << std::endl;
+    std::cout << "Found data file: " << dataFileQLCMS << std::endl;
+
+    // --- Analysis Set 1: Corrected Ratio Qinv---
+    std::cout << "\n--- Running Analysis 1: Corrected Ratio Qinv ---" << std::endl;
     
-    const char* ssHist_cor = "h_qinvSSCor_signal_2l"; 
-    const char* osHist_cor = "h_qinvOSCor_signal_2l"; 
+    const char* qinv_ssHist_cor = "h_qinvSSCor_signal_2l"; 
+    const char* qinv_osHist_cor = "h_qinvOSCor_signal_2l"; 
 
-    TString outputPrefix_cor = TString::Format(
-        "SingleRatio_Cor_%s_%.0f-%.0f", 
+    // Normalization qinv range
+    Double_t q1 = 4.82;
+    Double_t q2 = 6.4;
+
+    TString outputPrefix_qinv_cor = TString::Format(
+        "qinv_SingleRatio_Cor_%s_%.0f-%.0f", 
         selectionVarName, bin_low, bin_high
     );
-    const char* outputHist_cor = "sr_cor"; 
+    const char* outputQinvHist_cor = "sr_cor"; 
     
     TString plotHeader_cor = TString::Format(
         "PbPb 2.76 TeV | %s %.0f-%.0f (Cor)",
         selectionVarName, bin_low, bin_high
     );
 
-    getSingleRatio(dataFile.Data(), ssHist_cor,
-                   dataFile.Data(), osHist_cor, 
-                   outputPrefix_cor.Data(), outputHist_cor,
+    getSingleRatio(q1, q2, 
+                   dataFileQinv.Data(), qinv_ssHist_cor,
+                   dataFileQinv.Data(), qinv_osHist_cor, 
+                   outputPrefix_qinv_cor.Data(), outputQinvHist_cor,
                    plotHeader_cor.Data()); 
 
-    // --- Analysis Set 2: Uncorrected Ratio  ---
-    std::cout << "\n--- Running Analysis 2: Uncorrected Ratio ---" << std::endl;
+    // --- Analysis Set 2: Uncorrected Ratio Qinv ---
+    std::cout << "\n--- Running Analysis 2: Uncorrected Ratio Qinv ---" << std::endl;
 
-    const char* ssHist_uncor = "h_qinvSS_signal_2l"; 
-    const char* osHist_uncor = "h_qinvOS_signal_2l"; 
+    const char* qinv_ssHist_uncor = "h_qinvSS_signal_2l"; 
+    const char* qinv_osHist_uncor = "h_qinvOS_signal_2l"; 
 
-    TString outputPrefix_uncor = TString::Format(
-        "SingleRatio_Uncor_%s_%.0f-%.0f", 
+    TString outputPrefix_qinv_uncor = TString::Format(
+        "qinv_SingleRatio_Uncor_%s_%.0f-%.0f", 
         selectionVarName, bin_low, bin_high
     );
 
-    const char* outputHist_uncor = "sr_uncor";
+    const char* outputQinvHist_uncor = "sr_uncor";
     
     TString plotHeader_uncor = TString::Format(
         "PbPb 2.76 TeV | %s %.0f-%.0f (Uncor)",
         selectionVarName, bin_low, bin_high
     );
 
-    getSingleRatio(dataFile.Data(), ssHist_uncor,
-                   dataFile.Data(), osHist_uncor,
-                   outputPrefix_uncor.Data(), outputHist_uncor,
+    getSingleRatio(q1, q2, 
+                   dataFileQinv.Data(), qinv_ssHist_uncor,
+                   dataFileQinv.Data(), qinv_osHist_uncor,
+                   outputPrefix_qinv_uncor.Data(), outputQinvHist_uncor,
+                   plotHeader_uncor.Data());
+
+    
+    // --- Analysis Set 3: Corrected Ratio QLCMS ---
+    std::cout << "\n--- Running Analysis 3: Corrected Ratio QLCMS ---" << std::endl;
+    
+    const char* qlcms_ssHist_cor = "h_qlcmsSSCor_signal_2l"; 
+    const char* qlcms_osHist_cor = "h_qlcmsOSCor_signal_2l"; 
+
+    TString outputPrefix_qlcms_cor = TString::Format(
+        "qlcms_SingleRatio_Cor_%s_%.0f-%.0f", 
+        selectionVarName, bin_low, bin_high
+    );
+    const char* outputQlcmsHist_cor = "sr_cor"; 
+    
+    getSingleRatio(q1, q2, 
+                   dataFileQLCMS.Data(), qlcms_ssHist_cor,
+                   dataFileQLCMS.Data(), qlcms_osHist_cor, 
+                   outputPrefix_qlcms_cor.Data(), outputQlcmsHist_cor,
+                   plotHeader_cor.Data()); 
+
+    // --- Analysis Set 4: Uncorrected Ratio  QLCMS ---
+    std::cout << "\n--- Running Analysis 4: Uncorrected Ratio QLCMS ---" << std::endl;
+
+    const char* qlcms_ssHist_uncor = "h_qlcmsSS_signal_2l"; 
+    const char* qlcms_osHist_uncor = "h_qlcmsOS_signal_2l"; 
+
+    TString outputPrefix_qlcms_uncor = TString::Format(
+        "qlcms_SingleRatio_Uncor_%s_%.0f-%.0f", 
+        selectionVarName, bin_low, bin_high
+    );
+
+    const char* outputQlcmsHist_uncor = "sr_uncor";
+    
+    getSingleRatio(q1, q2, 
+                   dataFileQLCMS.Data(), qlcms_ssHist_uncor,
+                   dataFileQLCMS.Data(), qlcms_osHist_uncor,
+                   outputPrefix_qlcms_uncor.Data(), outputQlcmsHist_uncor,
                    plotHeader_uncor.Data());
 
     std::cout << "\nAll Single Ratio creation processes finished." << std::endl;
