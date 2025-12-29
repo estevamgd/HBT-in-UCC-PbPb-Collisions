@@ -18,8 +18,27 @@ int main() {
     double plotXMax = 0.1; 
     const std::string searchPath = "./data/correlation_ratios/";
 
-    processRatio(searchPath, controlVarName, selVarMin, selVarMax, "Cor", "sr_cor", fitMin, fitMax, plotXMin, plotXMax);
-    processRatio(searchPath, controlVarName, selVarMin, selVarMax, "Uncor", "sr_uncor", fitMin, fitMax, plotXMin, plotXMax);
+    // ---------------- qinv ----------------
+    processRatio(searchPath, "qinv", controlVarName,
+                 selVarMin, selVarMax,
+                 "Cor", "sr_cor",
+                 fitMin, fitMax, plotXMin, plotXMax);
+
+    processRatio(searchPath, "qinv", controlVarName,
+                 selVarMin, selVarMax,
+                 "Uncor", "sr_uncor",
+                 fitMin, fitMax, plotXMin, plotXMax);
+
+    // ---------------- qlcms ----------------
+    processRatio(searchPath, "qlcms", controlVarName,
+                 selVarMin, selVarMax,
+                 "Cor", "sr_cor",
+                 fitMin, fitMax, plotXMin, plotXMax);
+
+    processRatio(searchPath, "qlcms", controlVarName,
+                 selVarMin, selVarMax,
+                 "Uncor", "sr_uncor",
+                 fitMin, fitMax, plotXMin, plotXMax);
 
     std::cout << "\n\nAll processing finished." << std::endl;
     return 0;

@@ -22,7 +22,7 @@
 
 void fitSingleRatio(const char* inputFileName, const char* histName,
     const char* outputPrefix,
-    const char* centralityLabel = "N/A",
+    const char* headerLabel = "N/A",
     double fitMin = 0.0, double fitMax = 1.0,
     double plotXMin = 0.0, double plotXMax = 0.6){
 ROOT::EnableImplicitMT();
@@ -45,14 +45,19 @@ return;
 
 histToFit = (TH1D*)histToFit->Clone("histToFit_clone");
 
+TString xTitle = "q_{inv} (GeV)";
+if (TString(outputPrefix).Contains("qlcms"))
+    xTitle = "q_{LCMS} (GeV)";
+
 TCanvas *c1 = new TCanvas("c_fit_canvas", "Correlation Fit", 1200, 900);
 c1->SetLeftMargin(0.12);
 c1->SetBottomMargin(0.12);
 
-histToFit->GetXaxis()->SetTitle("q_{inv} (GeV)");
-histToFit->GetYaxis()->SetTitle("C(q_{inv}) = (Same-Sign) / (Opposite-Sign)");
+histToFit->GetXaxis()->SetTitle(xTitle);
+histToFit->GetYaxis()->SetTitle("C(q) = SS / OS");
 histToFit->GetXaxis()->SetTitleSize(0.045);
 histToFit->GetYaxis()->SetTitleSize(0.045);
+
 histToFit->GetXaxis()->SetRangeUser(plotXMin, plotXMin);
 histToFit->GetYaxis()->SetRangeUser(0.9, 2.1);
 
@@ -61,6 +66,7 @@ histToFit->SetMarkerSize(1.0);
 histToFit->SetMarkerColor(kBlack);
 histToFit->SetLineColor(kBlack);
 
+// Fits
 TF1 *fitExp = new TF1("fitExp", FitExp, fitMin, fitMax, 4);
 fitExp->SetParNames("Const", "#lambda", "R (fm)", "#epsilon");
 fitExp->SetParameters(1.0, 0.5, 5.0, 0.0);
@@ -122,7 +128,7 @@ legend->AddEntry((TObject*)0, Form(" p-value = %.3f", TMath::Prob(resLevy->Chi2(
 
 legend->Draw();
 
-drawCMSHeaders("#bf{CMS} #it{Preliminary}", centralityLabel);
+drawCMSHeaders("#bf{CMS} #it{Preliminary}", headerLabel);
 
 const char* imagePath = "./imgs/test/fit_correlation/";
 const char* histoPath = "./data/fit_correlation/";
@@ -143,30 +149,44 @@ delete fitLevy;
 delete line;
 }
 
-void processRatio(const std::string& searchPath, const char* controlVarName, 
-    double selVarMin, double selVarMax,
-    const char* typeTag,      // e.g., "Cor", "Raw"
-    const char* histName,     // e.g., "sr_cor", "sr_raw"
-    double fitMin = 0.0, double fitMax = 1.0,
-    double plotXMin = 0.0, double plotXMax = 0.6){
-std::cout << "\n--- Processing Ratio (" << typeTag << ") ---" << std::endl;
+void processRatio(const std::string& searchPath, 
+    const char* observable,   // qinv | qlcms
+    const char* controlVar,
+    double selMin,
+    double selMax,
+    const char* typeTag,      // Cor | Uncor
+    const char* histName,
+    double fitMin,
+    double fitMax,
+    double plotXMin,
+    double plotXMax){
+std::cout << "\n--- Processing " << observable << " (" << typeTag << ") ---\n";
 
-// Construct generic file pattern: SingleRatio_[TAG]_[VAR]_[MIN]-[MAX]*.root
-TString filePattern = TString::Format("SingleRatio_%s_%s_%.0f-%.0f*.root", typeTag, controlVarName, selVarMin, selVarMax);
+TString filePattern = TString::Format(
+    "%s_SingleRatio_%s_%s_%.0f-%.0f*.root",
+    observable, typeTag, controlVar, selMin, selMax
+);
+
 TString inputFile = findFile(searchPath + filePattern.Data());
 
 if (inputFile.IsNull()) {
-std::cerr << "Error: Could not find '" << typeTag << "' input file matching pattern: " 
-    << (searchPath + filePattern.Data()) << std::endl;
-} else {
-std::cout << "Found input file: " << inputFile << std::endl;
-
-TString outputPrefix = TString::Format("fit_%s_%s_%.0f-%.0f", typeTag, controlVarName, selVarMin, selVarMax);
-TString centralityLabel = TString::Format("%s: %.0f-%.0f (%s)", controlVarName, selVarMin, selVarMax, typeTag);
-
-fitSingleRatio(inputFile.Data(), histName, outputPrefix.Data(), centralityLabel.Data(), fitMin, fitMax, plotXMin, plotXMax);
-
-std::cout << "Analysis finished for " << histName << " (" << typeTag << ")." << std::endl;
+    std::cerr << "File not found: " << filePattern << std::endl;
+    return;
 }
+
+TString outputPrefix = TString::Format(
+    "fit_%s_%s_%s_%.0f-%.0f",
+    observable, typeTag, controlVar, selMin, selMax
+);
+
+TString header = TString::Format(
+    "%s: %.0f-%.0f (%s)",
+    controlVar, selMin, selMax, typeTag
+);
+
+fitSingleRatio(inputFile.Data(), histName,
+               outputPrefix.Data(), header.Data(),
+               fitMin, fitMax, plotXMin, plotXMax);
 }
+
 #endif
