@@ -35,6 +35,7 @@ void processSignalQinv(
     size_t j_n_tracks,
     const Float_t* trkWeight,
     const Int_t* trkCharge,
+    const Float_t* trkPt,
     const std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>& currentEventTracks4V,
     TH1D* h_qinvSS_signal_2l,
     TH1D* h_qinvSSCor_signal_2l,
@@ -47,6 +48,7 @@ void processSignalQinv(
     for (size_t p1 = 0; p1 < i_n_tracks; p1++) {
         for (size_t p2 = p1+1; p2 < j_n_tracks; p2++) {
             // Checks
+            if (trkPt[p1] <= 0.5 && trkPt[p2] <= 0.5) continue; // Check if both tracks have pt > 0.5 GeV/c
             if (std::isinf(trkWeight[p1] * trkWeight[p2])) continue; // Check if weight is infinity
             // Calculate q_inv
             double qinv = GetQ(currentEventTracks4V[p1], currentEventTracks4V[p2]);
@@ -66,6 +68,7 @@ void processSignalQinv(
     int thread_count,
     const Float_t* trkWeight,
     const Int_t* trkCharge,
+    const Float_t* trkPt,
     const std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>& currentEventTracks4V,
     TH1D* h_qinvSS_signal_2l,
     TH1D* h_qinvSSCor_signal_2l,
@@ -118,6 +121,7 @@ void processSignalQinv(
         for (size_t p1 = start_p1; p1 < end_p1; p1++) {
             for (size_t p2 = p1 + 1; p2 < n_tracks; p2++) {
                 if (std::isinf(trkWeight[p1] * trkWeight[p2])) continue;
+                if (trkPt[p1] <= 0.5 && trkPt[p2] <= 0.5) continue; // Check if both tracks have pt > 0.5 GeV/c
 
                 double qinv = GetQ(currentEventTracks4V[p1], currentEventTracks4V[p2]);
 
@@ -164,9 +168,11 @@ void processMixQinv(
     std::vector<std::vector<FourVector>>& vectorEventTracks4V,
     std::vector<std::vector<Int_t>>& vectorEventTracksCharge,
     std::vector<std::vector<Float_t>>& vectorEventTracksWeight,
+    std::vector<std::vector<Float_t>>& vectorEventTracksPt,
     const std::vector<FourVector>& currentEventTracks4V,
     const std::vector<Int_t>& currentEventTracksCharge,
     const std::vector<Float_t>& currentEventTracksWeight,
+    const std::vector<Float_t>& currentEventTracksPt,
     TH1D* h_qinv_mix_2l,
     TH1D* h_qinvCor_mix_2l)
 {
@@ -179,6 +185,7 @@ void processMixQinv(
         for (size_t p1 = 0; p1 < vectorEventTracks4V[nEv].size(); ++p1) {
             for (size_t p2 = 0; p2 < currentEventTracks4V.size(); ++p2) {
                 if (vectorEventTracksCharge[nEv][p1] * currentEventTracksCharge[p2] != pairChargeMult) continue;
+                if (vectorEventTracksPt[nEv][p1] <= 0.5 && currentEventTracksPt[p2] <= 0.5) continue; // Check if both tracks have pt > 0.5 GeV/c
                 if (std::isinf(vectorEventTracksWeight[nEv][p1] * currentEventTracksWeight[p2])) continue;
 
                 double qinv = GetQ(vectorEventTracks4V[nEv][p1], currentEventTracks4V[p2]);
@@ -190,11 +197,13 @@ void processMixQinv(
     vectorEventTracks4V.push_back(currentEventTracks4V);
     vectorEventTracksCharge.push_back(currentEventTracksCharge);
     vectorEventTracksWeight.push_back(currentEventTracksWeight);
-    
+    vectorEventTracksPt.push_back(currentEventTracksPt);
+
     if (vectorEventTracks4V.size() >= poolSize) {
         vectorEventTracks4V.clear();
         vectorEventTracksCharge.clear();
         vectorEventTracksWeight.clear();
+        vectorEventTracksPt.clear();
     }
 }
 
@@ -209,9 +218,11 @@ void processMixQinv(
     std::vector<std::vector<FourVector>>& vectorEventTracks4V,
     std::vector<std::vector<Int_t>>& vectorEventTracksCharge,
     std::vector<std::vector<Float_t>>& vectorEventTracksWeight,
+    std::vector<std::vector<Float_t>>& vectorEventTracksPt,
     const std::vector<FourVector>& currentEventTracks4V,
     const std::vector<Int_t>& currentEventTracksCharge,
     const std::vector<Float_t>& currentEventTracksWeight,
+    const std::vector<Float_t>& currentEventTracksPt,
     TH1D* h_qinv_mix_2l,
     TH1D* h_qinvCor_mix_2l)
 {   
@@ -247,6 +258,7 @@ void processMixQinv(
                 for (size_t p2 = start_p1; p2 < end_p1; ++p2) {
                     for (size_t p1 = 0; p1 < vectorEventTracks4V[nEv].size(); ++p1) {
                         if (vectorEventTracksCharge[nEv][p1] * currentEventTracksCharge[p2] != pairChargeMult) continue;
+                        if (vectorEventTracksPt[nEv][p1] <= 0.5 && currentEventTracksPt[p2] <= 0.5) continue; // Check if both tracks have pt > 0.5 GeV/c
                         if (std::isinf(vectorEventTracksWeight[nEv][p1] * currentEventTracksWeight[p2])) continue;
         
                         double qinv = GetQ(vectorEventTracks4V[nEv][p1], currentEventTracks4V[p2]);
@@ -283,11 +295,13 @@ void processMixQinv(
     vectorEventTracks4V.push_back(currentEventTracks4V);
     vectorEventTracksCharge.push_back(currentEventTracksCharge);
     vectorEventTracksWeight.push_back(currentEventTracksWeight);
+    vectorEventTracksPt.push_back(currentEventTracksPt);
     
     if (vectorEventTracks4V.size() >= poolSize) {
         vectorEventTracks4V.clear();
         vectorEventTracksCharge.clear();
         vectorEventTracksWeight.clear();
+        vectorEventTracksPt.clear();
     }
 }
 
@@ -296,6 +310,7 @@ void processSignalQLCMS(
     size_t j_n_tracks,
     const Float_t* trkWeight,
     const Int_t* trkCharge,
+    const Float_t* trkPt,
     const std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>& currentEventTracks4V,
     TH1D* h_qinvSS_signal_2l,
     TH1D* h_qinvSSCor_signal_2l,
@@ -309,6 +324,7 @@ void processSignalQLCMS(
         for (size_t p2 = p1+1; p2 < j_n_tracks; p2++) {
             // Checks
             if (std::isinf(trkWeight[p1] * trkWeight[p2])) continue; // Check if weight is infinity
+            if (trkPt[p1] <= 0.5 && trkPt[p2] <= 0.5) continue; // Check if both tracks have pt > 0.5 GeV/c
             // Calculate q_inv
             double qinv = GetQLCMS(currentEventTracks4V[p1], currentEventTracks4V[p2]);
             if (trkCharge[p1] * trkCharge[p2] > 0) { // Fills same charge particle pair histogram
@@ -327,6 +343,7 @@ void processSignalQLCMS(
     int thread_count,
     const Float_t* trkWeight,
     const Int_t* trkCharge,
+    const Float_t* trkPt,
     const std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>& currentEventTracks4V,
     TH1D* h_qinvSS_signal_2l,
     TH1D* h_qinvSSCor_signal_2l,
@@ -379,6 +396,7 @@ void processSignalQLCMS(
         for (size_t p1 = start_p1; p1 < end_p1; p1++) {
             for (size_t p2 = p1 + 1; p2 < n_tracks; p2++) {
                 if (std::isinf(trkWeight[p1] * trkWeight[p2])) continue;
+                if (trkPt[p1] <= 0.5 && trkPt[p2] <= 0.5) continue; // Check if both tracks have pt > 0.5 GeV/c
 
                 double qinv = GetQLCMS(currentEventTracks4V[p1], currentEventTracks4V[p2]);
 
@@ -425,9 +443,11 @@ void processMixQLCMS(
     std::vector<std::vector<FourVector>>& vectorEventTracks4V,
     std::vector<std::vector<Int_t>>& vectorEventTracksCharge,
     std::vector<std::vector<Float_t>>& vectorEventTracksWeight,
+    std::vector<std::vector<Float_t>>& vectorEventTracksPt,
     const std::vector<FourVector>& currentEventTracks4V,
     const std::vector<Int_t>& currentEventTracksCharge,
     const std::vector<Float_t>& currentEventTracksWeight,
+    const std::vector<Float_t>& currentEventTracksPt,
     TH1D* h_qinv_mix_2l,
     TH1D* h_qinvCor_mix_2l)
 {
@@ -440,6 +460,7 @@ void processMixQLCMS(
         for (size_t p1 = 0; p1 < vectorEventTracks4V[nEv].size(); ++p1) {
             for (size_t p2 = 0; p2 < currentEventTracks4V.size(); ++p2) {
                 if (vectorEventTracksCharge[nEv][p1] * currentEventTracksCharge[p2] != pairChargeMult) continue;
+                if (vectorEventTracksPt[nEv][p1] <= 0.5 && currentEventTracksPt[p2] <= 0.5) continue; // Check if both tracks have pt > 0.5 GeV/c
                 if (std::isinf(vectorEventTracksWeight[nEv][p1] * currentEventTracksWeight[p2])) continue;
 
                 double qinv = GetQLCMS(vectorEventTracks4V[nEv][p1], currentEventTracks4V[p2]);
@@ -451,11 +472,13 @@ void processMixQLCMS(
     vectorEventTracks4V.push_back(currentEventTracks4V);
     vectorEventTracksCharge.push_back(currentEventTracksCharge);
     vectorEventTracksWeight.push_back(currentEventTracksWeight);
+    vectorEventTracksPt.push_back(currentEventTracksPt);
     
     if (vectorEventTracks4V.size() >= poolSize) {
         vectorEventTracks4V.clear();
         vectorEventTracksCharge.clear();
         vectorEventTracksWeight.clear();
+        vectorEventTracksPt.clear();
     }
 }
 
@@ -470,9 +493,11 @@ void processMixQLCMS(
     std::vector<std::vector<FourVector>>& vectorEventTracks4V,
     std::vector<std::vector<Int_t>>& vectorEventTracksCharge,
     std::vector<std::vector<Float_t>>& vectorEventTracksWeight,
+    std::vector<std::vector<Float_t>>& vectorEventTracksPt,
     const std::vector<FourVector>& currentEventTracks4V,
     const std::vector<Int_t>& currentEventTracksCharge,
     const std::vector<Float_t>& currentEventTracksWeight,
+    const std::vector<Float_t>& currentEventTracksPt,
     TH1D* h_qinv_mix_2l,
     TH1D* h_qinvCor_mix_2l)
 {   
@@ -508,6 +533,7 @@ void processMixQLCMS(
                 for (size_t p2 = start_p1; p2 < end_p1; ++p2) {
                     for (size_t p1 = 0; p1 < vectorEventTracks4V[nEv].size(); ++p1) {
                         if (vectorEventTracksCharge[nEv][p1] * currentEventTracksCharge[p2] != pairChargeMult) continue;
+                        if (vectorEventTracksPt[nEv][p1] <= 0.5 && currentEventTracksPt[p2] <= 0.5) continue; // Check if both tracks have pt > 0.5 GeV/c
                         if (std::isinf(vectorEventTracksWeight[nEv][p1] * currentEventTracksWeight[p2])) continue;
         
                         double qinv = GetQLCMS(vectorEventTracks4V[nEv][p1], currentEventTracks4V[p2]);
@@ -544,11 +570,13 @@ void processMixQLCMS(
     vectorEventTracks4V.push_back(currentEventTracks4V);
     vectorEventTracksCharge.push_back(currentEventTracksCharge);
     vectorEventTracksWeight.push_back(currentEventTracksWeight);
-    
+    vectorEventTracksPt.push_back(currentEventTracksPt);
+
     if (vectorEventTracks4V.size() >= poolSize) {
         vectorEventTracks4V.clear();
         vectorEventTracksCharge.clear();
         vectorEventTracksWeight.clear();
+        vectorEventTracksPt.clear();
     }
 }
 #endif

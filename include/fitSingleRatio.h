@@ -92,19 +92,20 @@ fitLevy->SetParameters(1.0, 0.5, 5.0, 0.0, 1.2);
 fitLevy->SetParLimits(1, 0., 1.0);
 fitLevy->SetParLimits(4, 1., 2.0);
 fitLevy->SetLineColor(gStyle->GetColorPalette(220));
-//fitLevy->SetLineWidth(2);
-
-//TF1 *fitLevy = new TF1("fitLevy", FitLevy2, fitMin, fitMax, 3);
-//fitLevy->SetParNames("#lambda", "R (fm)",  "#alpha");
-//fitLevy->SetParameters(0.5, 5.0, 1.2);
-//fitLevy->SetParLimits(0, 0.0, 1.0);
-//fitLevy->SetParLimits(2, 1.0, 2.0);
-//fitLevy->SetLineColor(gStyle->GetColorPalette(220));
 fitLevy->SetLineWidth(2);
 
-TFitResultPtr resExp   = histToFit->Fit(fitExp,   "SREM");
-TFitResultPtr resGauss = histToFit->Fit(fitGauss, "SREM+");
-TFitResultPtr resLevy  = histToFit->Fit(fitLevy,  "SREM+");
+TF1 *fitLevy2 = new TF1("fitLevy2", FitLevy2, fitMin, fitMax, 3);
+fitLevy2->SetParNames("#lambda", "R (fm)",  "#alpha");
+fitLevy2->SetParameters(0.5, 5.0, 1.2);
+fitLevy2->SetParLimits(0, 0.0, 1.0);
+fitLevy2->SetParLimits(2, 1.0, 2.0);
+fitLevy2->SetLineColor(gStyle->GetColorPalette(20));
+fitLevy2->SetLineWidth(2);
+
+//TFitResultPtr resExp   = histToFit->Fit(fitExp,   "S R E M");
+//TFitResultPtr resGauss = histToFit->Fit(fitGauss, "S R E M +");
+TFitResultPtr resLevy  = histToFit->Fit(fitLevy,  "S R E M +");
+TFitResultPtr resLevy2 = histToFit->Fit(fitLevy2, "S R E M +");
 
 histToFit->GetXaxis()->SetRangeUser(plotXMin, plotXMax); 
 histToFit->Draw("E1 P");
@@ -123,17 +124,17 @@ legend->SetBorderSize(0);
 legend->SetFillStyle(0);
 legend->AddEntry(histToFit, "Data", "lep");
 
-legend->AddEntry(fitExp, "Exponential Fit", "l");
-legend->AddEntry((TObject*)0, Form(" #lambda = %.2f #pm %.2f", fitExp->GetParameter(0), fitExp->GetParError(0)), "");
-legend->AddEntry((TObject*)0, Form(" R = %.2f #pm %.2f fm", fitExp->GetParameter(1), fitExp->GetParError(1)), "");
-legend->AddEntry((TObject*)0, Form(" #chi^{2}/NDF = %.1f / %d", resExp->Chi2(), resExp->Ndf()), "");
-legend->AddEntry((TObject*)0, Form(" p-value = %.5f", resExp->Prob()), "");
-
-legend->AddEntry(fitGauss, "Gaussian Fit", "l");
-legend->AddEntry((TObject*)0, Form(" #lambda = %.2f #pm %.2f", fitGauss->GetParameter(0), fitGauss->GetParError(0)), "");
-legend->AddEntry((TObject*)0, Form(" R = %.2f #pm %.2f fm", fitGauss->GetParameter(1), fitGauss->GetParError(1)), "");
-legend->AddEntry((TObject*)0, Form(" #chi^{2}/NDF = %.1f / %d", resGauss->Chi2(), resGauss->Ndf()), "");
-legend->AddEntry((TObject*)0, Form(" p-value = %.5f", resGauss->Prob()), "");
+//legend->AddEntry(fitExp, "Exponential Fit", "l");
+//legend->AddEntry((TObject*)0, Form(" #lambda = %.2f #pm %.2f", fitExp->GetParameter(0), fitExp->GetParError(0)), "");
+//legend->AddEntry((TObject*)0, Form(" R = %.2f #pm %.2f fm", fitExp->GetParameter(1), fitExp->GetParError(1)), "");
+//legend->AddEntry((TObject*)0, Form(" #chi^{2}/NDF = %.1f / %d", resExp->Chi2(), resExp->Ndf()), "");
+//legend->AddEntry((TObject*)0, Form(" p-value = %.5f", resExp->Prob()), "");
+//
+//legend->AddEntry(fitGauss, "Gaussian Fit", "l");
+//legend->AddEntry((TObject*)0, Form(" #lambda = %.2f #pm %.2f", fitGauss->GetParameter(0), fitGauss->GetParError(0)), "");
+//legend->AddEntry((TObject*)0, Form(" R = %.2f #pm %.2f fm", fitGauss->GetParameter(1), fitGauss->GetParError(1)), "");
+//legend->AddEntry((TObject*)0, Form(" #chi^{2}/NDF = %.1f / %d", resGauss->Chi2(), resGauss->Ndf()), "");
+//legend->AddEntry((TObject*)0, Form(" p-value = %.5f", resGauss->Prob()), "");
 
 legend->AddEntry(fitLevy, "Levy Fit", "l");
 legend->AddEntry((TObject*)0, Form(" #lambda = %.2f #pm %.2f", fitLevy->GetParameter(1), fitLevy->GetParError(1)), "");
@@ -142,12 +143,12 @@ legend->AddEntry((TObject*)0, Form(" #alpha = %.2f #pm %.2f", fitLevy->GetParame
 legend->AddEntry((TObject*)0, Form(" #chi^{2}/NDF = %.1f / %d", resLevy->Chi2(), resLevy->Ndf()), "");
 legend->AddEntry((TObject*)0, Form(" p-value = %.5f", resLevy->Prob()), "");
 
-//legend->AddEntry(fitLevy, "Levy Fit", "l");
-//legend->AddEntry((TObject*)0, Form(" #lambda = %.2f #pm %.2f", fitLevy->GetParameter(0), fitLevy->GetParError(0)), "");
-//legend->AddEntry((TObject*)0, Form(" R = %.2f #pm %.2f fm", fitLevy->GetParameter(1), fitLevy->GetParError(1)), "");
-//legend->AddEntry((TObject*)0, Form(" #alpha = %.2f #pm %.2f", fitLevy->GetParameter(2), fitLevy->GetParError(2)), "");
-//legend->AddEntry((TObject*)0, Form(" #chi^{2}/NDF = %.1f / %d", resLevy->Chi2(), resLevy->Ndf()), "");
-//legend->AddEntry((TObject*)0, Form(" p-value = %.5f", resLevy->Prob()), "");
+legend->AddEntry(fitLevy2, "Levy Fit", "l");
+legend->AddEntry((TObject*)0, Form(" #lambda = %.2f #pm %.2f", fitLevy2->GetParameter(0), fitLevy2->GetParError(0)), "");
+legend->AddEntry((TObject*)0, Form(" R = %.2f #pm %.2f fm", fitLevy2->GetParameter(1), fitLevy2->GetParError(1)), "");
+legend->AddEntry((TObject*)0, Form(" #alpha = %.2f #pm %.2f", fitLevy2->GetParameter(2), fitLevy2->GetParError(2)), "");
+legend->AddEntry((TObject*)0, Form(" #chi^{2}/NDF = %.1f / %d", resLevy2->Chi2(), resLevy2->Ndf()), "");
+legend->AddEntry((TObject*)0, Form(" p-value = %.5f", resLevy2->Prob()), "");
 
 legend->Draw();
 
@@ -169,6 +170,7 @@ close_program(canvases, 1, histograms, 1, legends, 1, inputFile);
 delete fitExp;
 delete fitGauss;
 delete fitLevy;
+delete fitLevy2;
 delete line;
 }
 
