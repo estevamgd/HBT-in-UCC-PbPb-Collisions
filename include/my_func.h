@@ -34,6 +34,17 @@ using FourVector = ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>;
 
 enum class ControlVar { CENT = 0, MULT = 1, CENTHF = 2 };
 
+struct BenchmarkCentralityEntry {
+    std::string label;          // e.g. "0–5%"
+    double nEvents;             // number of processed events
+    std::vector<double> times;  // one per method (seconds)
+};
+
+struct BenchmarkMetadata {
+    std::string controlVariable;            // CENTRALITY, MULTIPLICITY, CENTHF, etc.
+    std::vector<std::string> inputFiles;    // files being compared
+    std::vector<std::string> methodNames;   // e.g. Single Loop, Double Loop
+};
 
 const char* getSelVarName(ControlVar varType) {
     if (varType == ControlVar::CENT) return "CENT";
@@ -381,6 +392,88 @@ void save_benchmark_chrono(const std::vector<double>& durations, const std::vect
 
     std::cout << "Benchmark saved to: " << fileName << std::endl;
 }
+
+void save_benchmark_validation(
+    const BenchmarkMetadata& meta,
+    const std::vector<BenchmarkCentralityEntry>& entries,
+    const char* path,
+    const char* prefix,
+    double normalization_factor = 1.0 // 1.0 → seconds, 60 → minutes, etc.
+) {
+    std::filesystem::create_directories(path);
+
+    time_t ttime = time(nullptr);
+    tm date = *localtime(&ttime);
+
+    char fileName[512];
+    sprintf(fileName,
+            "%s/%s_benchmark-%04d-%02d-%02d-%02d-%02d-%02d.txt",
+            path, prefix,
+            date.tm_year + 1900,
+            date.tm_mon + 1,
+            date.tm_mday,
+            date.tm_hour,
+            date.tm_min,
+            date.tm_sec);
+
+    std::ofstream out(fileName);
+    if (!out.is_open()) {
+        std::cerr << "Error opening benchmark file: " << fileName << std::endl;
+        return;
+    }
+
+    out << std::fixed << std::setprecision(6);
+
+    /* ===================== HEADER ===================== */
+    out << "===== BENCHMARK REPORT =====\n";
+    out << "Date: "
+        << (1900 + date.tm_year) << "-"
+        << (date.tm_mon + 1) << "-"
+        << date.tm_mday << " "
+        << date.tm_hour << ":"
+        << date.tm_min << ":"
+        << date.tm_sec << "\n\n";
+
+    out << "Control variable: " << meta.controlVariable << "\n\n";
+
+    /* ===================== FILES ===================== */
+    out << "Compared input files:\n";
+    for (const auto& f : meta.inputFiles)
+        out << "  - " << f << "\n";
+    out << "\n";
+
+    /* ===================== METHODS ===================== */
+    out << "Compared methods:\n";
+    for (size_t i = 0; i < meta.methodNames.size(); ++i)
+        out << "  [" << i << "] " << meta.methodNames[i] << "\n";
+    out << "\n";
+
+    /* ===================== RESULTS ===================== */
+    out << "Per-bin timing results:\n";
+    out << "------------------------------------------------------------\n";
+
+    for (const auto& entry : entries) {
+        out << "Bin: " << entry.label << "\n";
+        out << "Processed events: " << entry.nEvents << "\n";
+
+        for (size_t m = 0; m < entry.times.size(); ++m) {
+            double t_total = entry.times[m] / normalization_factor;
+            double t_per_evt = t_total / entry.nEvents;
+
+            out << "  Method: " << meta.methodNames[m] << "\n";
+            out << "    Total time      : " << t_total << " s\n";
+            out << "    Time per event  : " << t_per_evt << " s/event\n";
+        }
+
+        out << "------------------------------------------------------------\n";
+    }
+
+    out << "===== END OF BENCHMARK =====\n";
+    out.close();
+
+    std::cout << "Benchmark saved to: " << fileName << std::endl;
+}
+
 
 // Deletes canvases, histograms, legends, and closes the TFile
 void close_program(TCanvas *canvases[] = nullptr, int numCanvases = 0,

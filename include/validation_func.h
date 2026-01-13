@@ -239,7 +239,7 @@ void plot_timing_comparison(
 
     const char * frameTitle; 
     TString rightHeaderText = "Timing"; 
-    if (selectionVarType == ControlVar::CENTHF) frameTitle = ";Centrality (HFsumET);Time (s) / Event";
+    if (selectionVarType == ControlVar::CENTHF) frameTitle = ";\Sigma E_T [GeV];Time (s) / Event";
     else if (selectionVarType == ControlVar::MULT) frameTitle = ";Multiplicity (#Tracks);Time (s) / Event";
     else frameTitle = ";Centrality (%);Time (s) / Event";
 

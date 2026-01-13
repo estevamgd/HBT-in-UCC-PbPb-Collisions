@@ -419,7 +419,6 @@ void sig_qinv_double_loop_parallel(
     std::vector<std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>> vectorEventTracks4V;
     std::vector<std::vector<Int_t>> vectorEventTracksCharge;
     std::vector<std::vector<Float_t>> vectorEventTracksWeight;
-    std::vector<std::vector<Float_t>> vectorEventTracksPt;
 
     size_t poolSize = static_cast<size_t>(poolSizeInt);
 
@@ -440,14 +439,12 @@ void sig_qinv_double_loop_parallel(
         std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> currentEventTracks4V;
         std::vector<Int_t> currentEventTracksCharge;
         std::vector<Float_t> currentEventTracksWeight;
-        std::vector<Float_t> currentEventTracksPt;
 
         for (int j = 0; j < Ntrk; j++) {
             ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> currentTrack4V(trkPt[j], trkEta[j], trkPhi[j], pionMass);
             currentEventTracks4V.push_back(currentTrack4V);
             currentEventTracksCharge.push_back(trkCharge[j]);
             currentEventTracksWeight.push_back(trkWeight[j]);
-            currentEventTracksPt.push_back(trkPt[j]);
         }
         
         auto start_mix_lap = std::chrono::high_resolution_clock::now();
@@ -463,11 +460,9 @@ void sig_qinv_double_loop_parallel(
             vectorEventTracks4V,
             vectorEventTracksCharge,
             vectorEventTracksWeight,
-            vectorEventTracksPt,
             currentEventTracks4V,
             currentEventTracksCharge,
             currentEventTracksWeight,
-            currentEventTracksPt,
             h_qinv_mix_2l,
             h_qinvCor_mix_2l
         );
@@ -485,7 +480,6 @@ void sig_qinv_double_loop_parallel(
             thread_count,
             trkWeight, 
             trkCharge, 
-            trkPt,
             currentEventTracks4V, 
             h_qinvSS_signal_2l, 
             h_qinvSSCor_signal_2l, 
@@ -719,7 +713,6 @@ void sig_qlcms_double_loop(
         std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> currentEventTracks4V;
         std::vector<Int_t> currentEventTracksCharge;
         std::vector<Float_t> currentEventTracksWeight;
-        std::vector<Float_t> currentEventTracksPt;
 
         for (int j = 0; j < Ntrk; j++) {
             ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> currentTrack4V(trkPt[j], trkEta[j], trkPhi[j], pionMass);
@@ -997,7 +990,6 @@ void sig_qlcms_double_loop_parallel(
     std::vector<std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>> vectorEventTracks4V;
     std::vector<std::vector<Int_t>> vectorEventTracksCharge;
     std::vector<std::vector<Float_t>> vectorEventTracksWeight;
-    std::vector<std::vector<Float_t>> vectorEventTracksPt;
     
     size_t poolSize = static_cast<size_t>(poolSizeInt);
 
@@ -1018,14 +1010,12 @@ void sig_qlcms_double_loop_parallel(
         std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> currentEventTracks4V;
         std::vector<Int_t> currentEventTracksCharge;
         std::vector<Float_t> currentEventTracksWeight;
-        std::vector<Float_t> currentEventTracksPt;
 
         for (int j = 0; j < Ntrk; j++) {
             ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> currentTrack4V(trkPt[j], trkEta[j], trkPhi[j], pionMass);
             currentEventTracks4V.push_back(currentTrack4V);
             currentEventTracksCharge.push_back(trkCharge[j]);
             currentEventTracksWeight.push_back(trkWeight[j]);
-            currentEventTracksPt.push_back(trkPt[j]);
         }
         
         auto start_mix_lap = std::chrono::high_resolution_clock::now();
@@ -1041,11 +1031,9 @@ void sig_qlcms_double_loop_parallel(
             vectorEventTracks4V,
             vectorEventTracksCharge,
             vectorEventTracksWeight,
-            vectorEventTracksPt,
             currentEventTracks4V,
             currentEventTracksCharge,
             currentEventTracksWeight,
-            currentEventTracksPt,
             h_qlcms_mix_2l,
             h_qlcmsCor_mix_2l
         );
@@ -1063,7 +1051,6 @@ void sig_qlcms_double_loop_parallel(
             thread_count,
             trkWeight, 
             trkCharge, 
-            trkPt,
             currentEventTracks4V, 
             h_qlcmsSS_signal_2l, 
             h_qlcmsSSCor_signal_2l, 
