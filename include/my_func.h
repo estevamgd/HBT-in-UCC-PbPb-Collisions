@@ -34,6 +34,8 @@ using FourVector = ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>;
 
 enum class ControlVar { CENT = 0, MULT = 1, CENTHF = 2 };
 
+enum class qMode { QINV = 0, QLCMS = 1 };
+
 struct BenchmarkCentralityEntry {
     std::string label;          // e.g. "0–5%"
     double nEvents;             // number of processed events
@@ -57,6 +59,58 @@ const char* getSelVarName(ControlVar varType) {
 enum LoopMode { SINGLE = 0, BOTH = 1, DOUBLE = 2 }; // Define an enum for modes
 
 
+TString findFile(const TString& pattern, const TString& version_tag = "") {
+    TString command;
+    if (version_tag.IsNull() || version_tag.IsWhitespace()) {
+        // Default behavior: find the newest file by sorting alphabetically in reverse (works with YYYY-MM-DD filenames).
+        command = TString::Format("ls -1r %s 2>/dev/null | head -n 1", pattern.Data());
+    } else {
+        // Specific version: find the file containing the version tag, return the newest match if multiple.
+        command = TString::Format("ls -1r %s 2>/dev/null | grep %s | head -n 1", pattern.Data(), version_tag.Data());
+    }
+    
+    TString result = TString(gSystem->GetFromPipe(command)).Strip(TString::kBoth, '\n');
+    return result;
+}
+
+TH1D* getHistogram(TString fileSearchPattern, const char* histName) {
+    TString dataFile = findFile(fileSearchPattern);
+
+    if (dataFile.IsNull()) {
+        std::cerr << "Error: No data file found matching pattern: "
+                  << fileSearchPattern << std::endl;
+        return nullptr;
+    }
+
+    std::cout << "Found data file: " << dataFile << std::endl;
+
+    TFile* file = TFile::Open(dataFile, "READ");
+    if (!file || file->IsZombie()) {
+        std::cerr << "Error: Could not open file: " << dataFile << std::endl;
+        return nullptr;
+    }
+
+    TH1D* hist = dynamic_cast<TH1D*>(file->Get(histName));
+    if (!hist) {
+        std::cerr << "Error: Histogram '" << histName
+                  << "' not found in file." << std::endl;
+        file->Close();
+        delete file;
+        return nullptr;
+    }
+
+    TH1D* histClone = dynamic_cast<TH1D*>(
+        hist->Clone(Form("%s_clone", histName))
+    );
+
+    histClone->SetDirectory(nullptr);
+    
+    file->Close();
+    delete file;
+
+    return histClone;
+}
+
 std::string getTimestamp() {
     time_t ttime = time(NULL);
     struct tm date = *localtime(&ttime);
@@ -64,33 +118,6 @@ std::string getTimestamp() {
     strftime(buffer, sizeof(buffer), "%Y-%m-%d_%H-%M-%S", &date);
     return std::string(buffer);
 }
-
-
-void drawCMSHeaders(const char* leftText = "#bf{CMS} #it{Preliminary}", const char* rightText = "", double rightTextSizeFactor = 1.0) {
-    TLatex* latexLeft = new TLatex();
-    latexLeft->SetNDC(); // Use Normalized Device Coordinates
-    latexLeft->SetTextFont(42); // Standard font
-    latexLeft->SetTextSize(0.04); 
-
-    // Draw left text
-    latexLeft->SetTextAlign(11); // Align left, bottom
-    latexLeft->DrawLatex(gPad->GetLeftMargin(), 1 - gPad->GetTopMargin() + 0.01, leftText);
-
-    TLatex* latexRight = new TLatex();
-    latexRight->SetNDC();
-    latexRight->SetTextFont(42);
-    // Apply size factor for right text only
-    latexRight->SetTextSize(0.04 * rightTextSizeFactor); 
-
-    // Draw right text
-    latexRight->SetTextAlign(31); // Align right, bottom
-    latexRight->DrawLatex(1 - gPad->GetRightMargin(), 1 - gPad->GetTopMargin() + 0.01, rightText);
-    
-    // Clean up TLaTeX objects
-    delete latexLeft;
-    delete latexRight; 
-}
-
 
 // Input file and tree names get tree and file
 bool getFileTree(const char* file_name, const char* tree_name, TFile *&fr, TTree *&t) {
@@ -283,7 +310,7 @@ void save_histograms(TH1D *histograms[], int numHistograms, const char *path, co
             file_type);
 
         TFile saveFile(root_name, "NEw");
-
+        std::cout << "Saving histograms to file: " << root_name << std::endl;
         for (int i = 0; i < numHistograms; i++) {
             histograms[i]->Write();
         }
@@ -517,6 +544,31 @@ void close_program(TCanvas *canvases[] = nullptr, int numCanvases = 0,
     }
 }
 
+void drawCMSHeaders(const char* leftText = "#bf{CMS} #it{Preliminary}", const char* rightText = "", double rightTextSizeFactor = 1.0) {
+    TLatex* latexLeft = new TLatex();
+    latexLeft->SetNDC(); // Use Normalized Device Coordinates
+    latexLeft->SetTextFont(42); // Standard font
+    latexLeft->SetTextSize(0.04); 
+
+    // Draw left text
+    latexLeft->SetTextAlign(11); // Align left, bottom
+    latexLeft->DrawLatex(gPad->GetLeftMargin(), 1 - gPad->GetTopMargin() + 0.01, leftText);
+
+    TLatex* latexRight = new TLatex();
+    latexRight->SetNDC();
+    latexRight->SetTextFont(42);
+    // Apply size factor for right text only
+    latexRight->SetTextSize(0.04 * rightTextSizeFactor); 
+
+    // Draw right text
+    latexRight->SetTextAlign(31); // Align right, bottom
+    latexRight->DrawLatex(1 - gPad->GetRightMargin(), 1 - gPad->GetTopMargin() + 0.01, rightText);
+    
+    // Clean up TLaTeX objects
+    delete latexLeft;
+    delete latexRight; 
+}
+
 void no_statbox(TH1D *histograms[], int numHistograms) {
     for (int i = 0; i < numHistograms; i++) {
         histograms[i]->SetStats(0);
@@ -570,18 +622,6 @@ int setLoopMode(LoopMode mode) {
 //    Float_t weight;  
 //};
 
-TString findFile(const TString& pattern, const TString& version_tag = "") {
-    TString command;
-    if (version_tag.IsNull() || version_tag.IsWhitespace()) {
-        // Default behavior: find the newest file by sorting alphabetically in reverse (works with YYYY-MM-DD filenames).
-        command = TString::Format("ls -1r %s 2>/dev/null | head -n 1", pattern.Data());
-    } else {
-        // Specific version: find the file containing the version tag, return the newest match if multiple.
-        command = TString::Format("ls -1r %s 2>/dev/null | grep %s | head -n 1", pattern.Data(), version_tag.Data());
-    }
-    
-    TString result = TString(gSystem->GetFromPipe(command)).Strip(TString::kBoth, '\n');
-    return result;
-}
+
 
 #endif 

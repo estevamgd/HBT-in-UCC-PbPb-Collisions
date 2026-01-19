@@ -65,8 +65,8 @@ histToFit->GetYaxis()->SetTitle("C(q) = SS / OS");
 histToFit->GetXaxis()->SetTitleSize(0.045);
 histToFit->GetYaxis()->SetTitleSize(0.045);
 
-histToFit->GetXaxis()->SetRangeUser(plotXMin, plotXMax);
-histToFit->GetYaxis()->SetRangeUser(0.9, 2.1);
+histToFit->GetXaxis()->SetRangeUser(fitMin, fitMax);
+histToFit->GetYaxis()->SetRangeUser(0.9, 28.0);
 
 histToFit->SetMarkerStyle(20);
 histToFit->SetMarkerSize(1.0);
@@ -107,7 +107,10 @@ fitLevy2->SetLineWidth(2);
 TFitResultPtr resLevy  = histToFit->Fit(fitLevy,  "S R E M +");
 TFitResultPtr resLevy2 = histToFit->Fit(fitLevy2, "S R E M +");
 
-histToFit->GetXaxis()->SetRangeUser(plotXMin, plotXMax); 
+histToFit->GetXaxis()->SetRangeUser(plotXMin, plotXMax);
+histToFit->GetYaxis()->SetRangeUser(0.9, 10.0);
+//gPad->DrawFrame(plotXMin, 0.9, plotXMax, 2.1);
+//gPad->Update();
 histToFit->Draw("E1 P");
 
 TLine *line = new TLine(plotXMin, 1.0, plotXMax, 1.0); 

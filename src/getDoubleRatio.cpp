@@ -79,7 +79,7 @@ void getSingleRatio(Double_t q1, Double_t q2,
     cRatio->SetLeftMargin(0.12);
     cRatio->SetBottomMargin(0.12);
     hRatio->GetYaxis()->SetTitleOffset(1.2);
-    hRatio->GetXaxis()->SetRangeUser(0.0, 0.02);
+
     hRatio->Draw("E1 PLC");
     
     TLegend *legendRatio = new TLegend(0.6, 0.8, 0.88, 0.88);
@@ -171,6 +171,7 @@ int main() {
         selectionVarName, bin_low, bin_high
     );
     const char* outputQinvHist_cor = "sr_cor"; 
+    
     TString plotHeader_cor = TString::Format(
         "PbPb 2.76 TeV | %s %.0f-%.0f (Cor)",
         selectionVarName, bin_low, bin_high

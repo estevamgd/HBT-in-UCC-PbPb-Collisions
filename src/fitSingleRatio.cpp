@@ -15,7 +15,7 @@ int main() {
     double fitMin = 0.0;
     double fitMax = 0.25; 
     double plotXMin = 0.0; 
-    double plotXMax = 0.1; 
+    double plotXMax = 0.15; 
     const std::string searchPath = "./data/correlation_ratios/";
 
     // ---------------- qinv ----------------
@@ -30,10 +30,10 @@ int main() {
     //             fitMin, fitMax, plotXMin, plotXMax);
 
     // ---------------- qlcms ----------------
-    processRatio(searchPath, "qlcms", controlVarName,
-                 selVarMin, selVarMax,
-                 "Cor", "sr_cor",
-                 fitMin, fitMax, plotXMin, plotXMax);
+    //processRatio(searchPath, "qlcms", controlVarName,
+    //             selVarMin, selVarMax,
+    //             "Cor", "sr_cor",
+    //             fitMin, fitMax, plotXMin, plotXMax);
 
     //processRatio(searchPath, "qlcms", controlVarName,
     //             selVarMin, selVarMax,

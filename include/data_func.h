@@ -16,6 +16,8 @@ using namespace std;
 #define ALPHAEM 0.0072973525664  // 1.0/137.035999139, fine structure constant
 #define PREFACTOR 0.016215165    // ALPHAEM * PI * PI_MASS / HBARC
 
+enum class FitFunctionType { EXPONENTIAL = 0, GAUSSIAN = 1, LEVY = 2, LEVY2 = 3, BACKGROUND = 4, DOUBLE_LEVY = 5 };
+
 // to reject a range in the fit -- in principle did not reject any range
 Double_t reject_range_min = 0.01;
 Double_t reject_range_max = 0.00001;
@@ -24,6 +26,46 @@ Double_t reject_range_max = 0.00001;
 Double_t KGamow  (Double_t *x, Double_t *par);
 Double_t KMod    (Double_t *x, Double_t *par);
 Double_t KCoulomb(Double_t *x, Double_t *par);
+Double_t FitExp    (Double_t*, Double_t*);
+Double_t FitGauss  (Double_t*, Double_t*);
+Double_t FitLevy   (Double_t*, Double_t*);
+Double_t FitLevy2  (Double_t*, Double_t*);
+Double_t FitBG     (Double_t*, Double_t*);
+Double_t FitLevyDR (Double_t*, Double_t*);
+
+// ===== Fit Factory ===== //
+struct FitInit {
+    std::vector<double> values;
+};
+
+struct FitParamInfo {
+    int index;            // TF1 parameter index
+    std::string label;    // "#lambda", "R", "#alpha"
+    std::string unit;     // " fm", "" 
+};
+
+struct FitModelConfig {
+    const char* name;
+    const char* displayName;
+    Double_t (*func)(Double_t*, Double_t*);
+    int nPar;
+    std::vector<std::string> parNames;
+    std::vector<std::pair<double,double>> parLimits;
+    std::vector<FitParamInfo> legendParams;
+};
+
+FitModelConfig getFitModelConfig(FitFunctionType type);
+
+TF1* fitHistogram(
+    TH1D* hist,
+    FitFunctionType type,
+    const FitInit& init,
+    double fitMin,
+    double fitMax,
+    TFitResultPtr* fitResult = nullptr
+);
+
+// ===== Functions Definitions ===== //
 
 // Exponential function + long range from: https://github.com/i5albg/hbt_analysis/blob/main/final_HBT.C#L44-L67
 Double_t FitExp(Double_t* x, Double_t* par){
