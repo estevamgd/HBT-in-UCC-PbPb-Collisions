@@ -44,6 +44,30 @@ void doubleRatioFit(ControlVar selectedControlVar,
             : "; q_{inv} [GeV]; C(q_{inv}) = SS/OS",
         "Single Ratio (SS/OS)"
     );
+
+    // ===== Single Ratio Fits ===== //
+    std::vector<std::pair<FitFunctionType, FitInit>> models1 = {
+        //{FitFunctionType::EXPONENTIAL, {{1.0, 0.5, 5.0, 0.0}}},
+        {FitFunctionType::GAUSSIAN, {{1.0, 0.5, 5.0, 0.0}}},
+        {FitFunctionType::LEVY, {{1.0, 0.5, 5.0, 0.0, 1.2}}},
+        {FitFunctionType::LEVY2, {{0.6, 4.0, 1.5}}},
+        {FitFunctionType::DOUBLE_LEVY, {{0.6, 4.0, 1.5, 0.0, 1.0}}}
+    };
+    
+    auto fits1 = fitHistogramMultiple(
+        singleRatio,
+        models1,
+        fitMin, fitMax
+    );
+
+    // ===== Draw & Save once ===== //
+    drawAndSaveFits(
+        singleRatio,
+        fits1,
+        "c_single_ratio_fits",
+        Form("PbPb 2.76 TeV | Single Ratio | %s: %.0f-%.0f", selectionVarName, bin_low, bin_high),
+        Form("fit_%s_%s_%.0f-%.0f", qmodename, selectionVarName, bin_low, bin_high),
+        mode, plotXMin, plotXMax);
     
     // ===== Background Fit ===== //
     FitInit bgInit{{1.0, 0.1, 2.0, 0.1, 2.0}};
@@ -71,7 +95,7 @@ void doubleRatioFit(ControlVar selectedControlVar,
     // ===== Final Fits ===== //
     std::vector<std::pair<FitFunctionType, FitInit>> models = {
         //{FitFunctionType::EXPONENTIAL, {{1.0, 0.5, 5.0, 0.0}}},
-        //{FitFunctionType::GAUSSIAN, {{1.0, 0.5, 5.0, 0.0}}},
+        {FitFunctionType::GAUSSIAN, {{1.0, 0.5, 5.0, 0.0}}},
         {FitFunctionType::LEVY, {{1.0, 0.5, 5.0, 0.0, 1.2}}},
         {FitFunctionType::LEVY2, {{0.6, 4.0, 1.5}}},
         {FitFunctionType::DOUBLE_LEVY, {{0.6, 4.0, 1.5, 0.0, 1.0}}}

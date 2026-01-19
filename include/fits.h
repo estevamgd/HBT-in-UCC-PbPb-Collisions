@@ -153,22 +153,23 @@ void drawAndSaveFits(
     qMode mode = qMode::QINV,
     double plotXMin = 0.0, double plotXMax = 10.0,
     double plotYMin = 0.9, double plotYMax = 2.1) {
+    TH1D* histClone = (TH1D*)(hist->Clone("histClone"));
     gStyle->SetOptStat(0);     
     gStyle->SetPalette(kBlueRedYellow);
     TCanvas* c = new TCanvas(canvasName, "Correlation Fits", 1200, 900);
     c->SetLeftMargin(0.12);
     c->SetBottomMargin(0.12);
-    
-    hist->SetMarkerStyle(20);
-    hist->SetMarkerColor(kBlack);
-    hist->GetXaxis()->SetRangeUser(plotXMin, plotXMax);
-    hist->GetYaxis()->SetRangeUser(plotYMin, plotYMax);
-    hist->SetXTitle(Form("q_{%s} [GeV]", 
+
+    histClone->SetMarkerStyle(20);
+    histClone->SetMarkerColor(kBlack);
+    histClone->GetXaxis()->SetRangeUser(plotXMin, plotXMax);
+    histClone->GetYaxis()->SetRangeUser(plotYMin, plotYMax);
+    histClone->SetXTitle(Form("q_{%s} [GeV]", 
         (mode == qMode::QLCMS) ? "LCMS" : "inv"));
-    hist->SetYTitle(Form("C(q_{%s}) = %s", 
+    histClone->SetYTitle(Form("C(q_{%s}) = %s", 
         (mode == qMode::QLCMS) ? "LCMS" : "inv",
         (headerLabel.Contains("Double Ratio")) ? "Data/Fit" : "SS/OS"));
-    hist->Draw("E1 P");
+    histClone->Draw("E1 P");
     
     TLegend* leg = new TLegend(0.55, 0.40, 0.88, 0.88);
     leg->SetTextFont(42);
@@ -179,12 +180,14 @@ void drawAndSaveFits(
     leg->SetEntrySeparation(0.12);
     leg->SetMargin(0.18);
     
-    leg->AddEntry(hist, "Data", "lep");
+    leg->AddEntry(histClone, "Data", "lep");
     leg->AddEntry((TObject*)nullptr, " ", "");
     
+    Int_t fitIndex = 0;
     for (const auto& fit : fits) {
         fit.function->Draw("SAME");
-        fit.function->SetLineColor(gStyle->GetColorPalette(50 + 100 * (&fit - &fits[0])));
+        fit.function->SetLineColor(colors[fitIndex]);
+         fit.function->SetLineStyle(lineStyles[1]);
         fit.function->SetLineWidth(2);
 
         leg->AddEntry(fit.function, fit.displayName.c_str(), "l");
@@ -216,7 +219,7 @@ void drawAndSaveFits(
         );
 
         leg->AddEntry((TObject*)nullptr, " ", "");
-
+        fitIndex++;
     }
     
     leg->Draw();
@@ -227,7 +230,7 @@ void drawAndSaveFits(
 
     TCanvas* canvases[] = {c};
     
-    save_histograms(&hist, 1, "./data/fit_correlation/", outputPrefix);
+    save_histograms(&histClone, 1, "./data/fit_correlation/", outputPrefix);
     save_canvas_images(canvases, 1, "./imgs/test/fit_correlation/", outputPrefix, "png");
     save_canvas_images(canvases, 1, "./imgs/test/fit_correlation/", outputPrefix, "pdf");
 

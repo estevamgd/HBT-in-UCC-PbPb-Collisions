@@ -55,9 +55,30 @@ const char* getSelVarName(ControlVar varType) {
     return "UNKNOWN";
 }
 
-
 enum LoopMode { SINGLE = 0, BOTH = 1, DOUBLE = 2 }; // Define an enum for modes
 
+
+static const Int_t colors[12] = {
+    kRed,
+    kOrange,
+    kYellow,
+    kGreen,
+    kSpring,
+    kCyan,
+    kAzure,
+    kBlue,
+    kViolet,
+    kMagenta,
+    kTeal,
+    kPink
+};
+
+static const Int_t lineStyles[4] = {
+    1, // solid
+    2, // dashed
+    3, // dotted
+    4  // dash-dotted
+};
 
 TString findFile(const TString& pattern, const TString& version_tag = "") {
     TString command;
