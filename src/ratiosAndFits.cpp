@@ -7,7 +7,7 @@ void doubleRatioFit(ControlVar selectedControlVar,
                     double bin_low, double bin_high,
                     Double_t q1, Double_t q2,
                     qMode mode,
-                    double fitMin = 0.0, double fitMax = 10.0,
+                    double fitMin = 0.0, double fitMax = 10.0, double fitMinBG = 0.15,
                     double plotXMin = 0.0, double plotXMax = 10.0,
                     const char* fileName = nullptr)
 {
@@ -47,10 +47,10 @@ void doubleRatioFit(ControlVar selectedControlVar,
 
     // ===== Single Ratio Fits ===== //
     std::vector<std::pair<FitFunctionType, FitInit>> models1 = {
-        //{FitFunctionType::EXPONENTIAL, {{1.0, 0.5, 5.0, 0.0}}},
+        {FitFunctionType::EXPONENTIAL, {{1.0, 0.5, 5.0, 0.0}}},
         {FitFunctionType::GAUSSIAN, {{1.0, 0.5, 5.0, 0.0}}},
         {FitFunctionType::LEVY, {{1.0, 0.5, 5.0, 0.0, 1.2}}},
-        {FitFunctionType::LEVY2, {{0.6, 4.0, 1.5}}},
+        //{FitFunctionType::LEVY2, {{0.6, 4.0, 1.5}}},
         {FitFunctionType::DOUBLE_LEVY, {{0.6, 4.0, 1.5, 0.0, 1.0}}}
     };
     
@@ -75,10 +75,10 @@ void doubleRatioFit(ControlVar selectedControlVar,
 
     TF1* bgFit = fitHistogram(
         singleRatio,
+        &bgRes,
         FitFunctionType::BACKGROUND,
         bgInit,
-        fitMin, fitMax,
-        &bgRes
+        fitMinBG
     );
 
     // ===== Double Ratio ===== //
@@ -94,10 +94,10 @@ void doubleRatioFit(ControlVar selectedControlVar,
 
     // ===== Final Fits ===== //
     std::vector<std::pair<FitFunctionType, FitInit>> models = {
-        //{FitFunctionType::EXPONENTIAL, {{1.0, 0.5, 5.0, 0.0}}},
+        {FitFunctionType::EXPONENTIAL, {{1.0, 0.5, 5.0, 0.0}}},
         {FitFunctionType::GAUSSIAN, {{1.0, 0.5, 5.0, 0.0}}},
         {FitFunctionType::LEVY, {{1.0, 0.5, 5.0, 0.0, 1.2}}},
-        {FitFunctionType::LEVY2, {{0.6, 4.0, 1.5}}},
+        //{FitFunctionType::LEVY2, {{0.6, 4.0, 1.5}}},
         {FitFunctionType::DOUBLE_LEVY, {{0.6, 4.0, 1.5, 0.0, 1.0}}}
     };
     
@@ -137,22 +137,26 @@ int main() {
     // --- Configuration ---
     // Define the analysis parameters
     ControlVar selectedControlVar = ControlVar::CENTHF;
-    double bin_low = 3200.0;
-    double bin_high = 3300.0;
     qMode modeLCMS = qMode::QLCMS;
     qMode modeQinv = qMode::QINV;
+    
+    double bin_low = 3200.0;
+    double bin_high = 3300.0;
+    
     double plotXMin = 0.0;
     double plotXMax = 0.1;
-    double fitMin = 0.0;
+    
+    double fitMin = 0.05;
     double fitMax = 0.25;
+    double fitMinBg = 0.2;
 
     // Normalization qinv range
     Double_t q1 = 4.82;
     Double_t q2 = 6.4;
 
     // --- Analysis
-    doubleRatioFit(selectedControlVar, bin_low, bin_high, q1, q2, modeLCMS, fitMin, fitMax, plotXMin, plotXMax);
-    doubleRatioFit(selectedControlVar, bin_low, bin_high, q1, q2, modeQinv, fitMin, fitMax, plotXMin, plotXMax);
+    doubleRatioFit(selectedControlVar, bin_low, bin_high, q1, q2, modeLCMS, fitMin, fitMax, fitMinBg, plotXMin, plotXMax);
+    //doubleRatioFit(selectedControlVar, bin_low, bin_high, q1, q2, modeQinv, fitMin, fitMax, fitMinBg, plotXMin, plotXMax);
 
     return 0;
 }

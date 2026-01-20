@@ -58,12 +58,12 @@ const char* getSelVarName(ControlVar varType) {
 enum LoopMode { SINGLE = 0, BOTH = 1, DOUBLE = 2 }; // Define an enum for modes
 
 
-static const Int_t colors[12] = {
+static const Int_t colors[10] = {
     kRed,
-    kOrange,
+    //kOrange,
     kYellow,
     kGreen,
-    kSpring,
+    //kSpring,
     kCyan,
     kAzure,
     kBlue,
@@ -569,7 +569,7 @@ void drawCMSHeaders(const char* leftText = "#bf{CMS} #it{Preliminary}", const ch
     TLatex* latexLeft = new TLatex();
     latexLeft->SetNDC(); // Use Normalized Device Coordinates
     latexLeft->SetTextFont(42); // Standard font
-    latexLeft->SetTextSize(0.04); 
+    latexLeft->SetTextSize(0.035); 
 
     // Draw left text
     latexLeft->SetTextAlign(11); // Align left, bottom

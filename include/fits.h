@@ -78,7 +78,7 @@ FitModelConfig getFitModelConfig(FitFunctionType type)
     case FitFunctionType::BACKGROUND:
         return {
             "fitBG", "Background Fit", FitBG, 5,
-            {"Norm","a","b","c","d"},
+            {"Norm","#alpha_{1}","R_{1}","#alpha_{2}","R_{2}"},
             {{0.,0.},{0.,0.},{0.,0.},{0.,0.},{0.,0.}},
             {}
         };
@@ -92,17 +92,16 @@ FitModelConfig getFitModelConfig(FitFunctionType type)
 
 TF1* fitHistogram(
     TH1D* hist,
+    TFitResultPtr* fitResult,
     FitFunctionType type,
     const FitInit& init,
-    double fitMin,
-    double fitMax,
-    TFitResultPtr* fitResult
-) {
+    double fitMin = 0.0,
+    double fitMax = 10.0) {
     auto cfg = getFitModelConfig(type);
     
     if ((int)init.values.size() != cfg.nPar)
         throw std::runtime_error("Wrong number of initial parameters");
-
+    
     TF1* f = new TF1(cfg.name, cfg.func, fitMin, fitMax, cfg.nPar);
 
     for (int i = 0; i < cfg.nPar; ++i) {
@@ -129,14 +128,14 @@ TF1* fitHistogram(
 std::vector<FitOutput> fitHistogramMultiple(
     TH1D* hist,
     const std::vector<std::pair<FitFunctionType, FitInit>>& models,
-    double fitMin,
-    double fitMax
+    double fitMin = 0.0,
+    double fitMax = 10.0
 ) {
     std::vector<FitOutput> outputs;
 
     for (const auto& [type, init] : models) {
         TFitResultPtr res;
-        TF1* f = fitHistogram(hist, type, init, fitMin, fitMax, &res);
+        TF1* f = fitHistogram(hist, &res, type, init, fitMin, fitMax);
         auto cfg = getFitModelConfig(type);
         outputs.push_back({type, f, res, cfg.legendParams, cfg.displayName});
     }
@@ -171,6 +170,13 @@ void drawAndSaveFits(
         (headerLabel.Contains("Double Ratio")) ? "Data/Fit" : "SS/OS"));
     histClone->Draw("E1 P");
     
+    TLine *line = new TLine(plotXMin, 1.0, plotXMax, 1.0); 
+
+    line->SetLineColor(kGray + 2);
+    line->SetLineStyle(kDashed);
+    line->SetLineWidth(2);
+    line->Draw("SAME");
+
     TLegend* leg = new TLegend(0.55, 0.40, 0.88, 0.88);
     leg->SetTextFont(42);
     leg->SetTextSize(0.022);
@@ -187,7 +193,7 @@ void drawAndSaveFits(
     for (const auto& fit : fits) {
         fit.function->Draw("SAME");
         fit.function->SetLineColor(colors[fitIndex]);
-         fit.function->SetLineStyle(lineStyles[1]);
+         fit.function->SetLineStyle(lineStyles[0]);
         fit.function->SetLineWidth(2);
 
         leg->AddEntry(fit.function, fit.displayName.c_str(), "l");
@@ -226,7 +232,7 @@ void drawAndSaveFits(
     double sizeFactor = 1.0;
     if (headerLabel.Length() > 40) sizeFactor = 0.8;
     if (headerLabel.Length() > 60) sizeFactor = 0.7;
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", headerLabel, sizeFactor);
+    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", headerLabel, sizeFactor);
 
     TCanvas* canvases[] = {c};
     

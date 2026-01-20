@@ -47,7 +47,7 @@ void saveRatio(TH1D* hRatio,
     legendRatio->SetBorderSize(0);
     legendRatio->Draw();
 
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", plotHeaderText);
+    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", plotHeaderText);
 
     const char* histoPath = "./data/correlation_ratios/";
     TH1D *histogramsToSave[] = {hRatioClone};
