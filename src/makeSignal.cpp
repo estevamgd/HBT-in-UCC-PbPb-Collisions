@@ -15,7 +15,6 @@
 #include "Math/LorentzVector.h"
 #include "Math/PtEtaPhiM4D.h"
 #include "ROOT/RConfig.hxx"
-#include "../include/validation_func.h"
 #include "../include/data_func.h"
 #include "../include/process_func.h"
 
@@ -858,13 +857,13 @@ void sig_qinv_double_loop_parallel_pt(
     char prefix[100];
     if (ptMax > 0){
         if (ptMin > 0){
-            sprintf(prefix, "sig_qinv_double_loop_parallel_pT-from-%d-to-%d_%s_%f-%f", ptMin, ptMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+            sprintf(prefix, "sig_qinv_double_loop_parallel_pT-from-%f-to-%f_%s_%f-%f", ptMin, ptMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
         } else {
-            sprintf(prefix, "sig_qinv_double_loop_parallel_pT-to-%d_%s_%f-%f", ptMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+            sprintf(prefix, "sig_qinv_double_loop_parallel_pT-to-%f_%s_%f-%f", ptMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
         }
     } else {
         if (ptMin > 0){
-            sprintf(prefix, "sig_qinv_double_loop_parallel_pT-from-%d_%s_%f-%f", ptMin, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+            sprintf(prefix, "sig_qinv_double_loop_parallel_pT-from-%f_%s_%f-%f", ptMin, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
         } else {
             sprintf(prefix, "sig_qinv_double_loop_parallel_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
         }
@@ -1720,13 +1719,13 @@ void sig_qlcms_double_loop_parallel_pt(
     char prefix[100];
     if (ptMax > 0){
         if (ptMin > 0){
-            sprintf(prefix, "sig_qlcms_double_loop_parallel_pT-from-%d-to-%d_%s_%f-%f", ptMin, ptMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+            sprintf(prefix, "sig_qlcms_double_loop_parallel_pT-from-%f-to-%f_%s_%f-%f", ptMin, ptMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
         } else {
-            sprintf(prefix, "sig_qlcms_double_loop_parallel_pT-to-%d_%s_%f-%f", ptMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+            sprintf(prefix, "sig_qlcms_double_loop_parallel_pT-to-%f_%s_%f-%f", ptMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
         }
     } else {
         if (ptMin > 0){
-            sprintf(prefix, "sig_qlcms_double_loop_parallel_pT-from-%d_%s_%f-%f", ptMin, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+            sprintf(prefix, "sig_qlcms_double_loop_parallel_pT-from-%f_%s_%f-%f", ptMin, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
         } else {
             sprintf(prefix, "sig_qlcms_double_loop_parallel_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
         }
