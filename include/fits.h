@@ -149,6 +149,7 @@ void drawAndSaveFits(
     const char* canvasName,
     TString headerLabel,
     const char* outputPrefix,
+    const char* histTittle = "; q_{inv} [GeV]; C(q_{inv}) = SS/OS",
     qMode mode = qMode::QINV,
     double plotXMin = 0.0, double plotXMax = 10.0,
     double plotYMin = 0.9, double plotYMax = 2.1) {
@@ -163,11 +164,7 @@ void drawAndSaveFits(
     histClone->SetMarkerColor(kBlack);
     histClone->GetXaxis()->SetRangeUser(plotXMin, plotXMax);
     histClone->GetYaxis()->SetRangeUser(plotYMin, plotYMax);
-    histClone->SetXTitle(Form("q_{%s} [GeV]", 
-        (mode == qMode::QLCMS) ? "LCMS" : "inv"));
-    histClone->SetYTitle(Form("C(q_{%s}) = %s", 
-        (mode == qMode::QLCMS) ? "LCMS" : "inv",
-        (headerLabel.Contains("Double Ratio")) ? "Data/Fit" : "SS/OS"));
+    histClone->SetTitle(histTittle);
     histClone->Draw("E1 P");
     
     TLine *line = new TLine(plotXMin, 1.0, plotXMax, 1.0); 
