@@ -160,7 +160,7 @@ void drawAndSaveFits(
     c->SetLeftMargin(0.12);
     c->SetBottomMargin(0.12);
 
-    histClone->SetMarkerStyle(20);
+    histClone->SetMarkerStyle(4);
     histClone->SetMarkerColor(kBlack);
     histClone->GetXaxis()->SetRangeUser(plotXMin, plotXMax);
     histClone->GetYaxis()->SetRangeUser(plotYMin, plotYMax);

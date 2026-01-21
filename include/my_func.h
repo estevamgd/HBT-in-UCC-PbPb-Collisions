@@ -58,19 +58,16 @@ const char* getSelVarName(ControlVar varType) {
 enum LoopMode { SINGLE = 0, BOTH = 1, DOUBLE = 2 }; // Define an enum for modes
 
 
-static const Int_t colors[10] = {
-    kRed,
-    //kOrange,
-    kYellow,
-    kGreen,
-    //kSpring,
-    kCyan,
-    kAzure,
-    kBlue,
-    kViolet,
-    kMagenta,
-    kTeal,
-    kPink
+static const Int_t colors[9] = {
+    kRed-7,
+    kYellow-7,
+    kGreen-7,
+    kBlue-7,
+    kPink+10,
+    kOrange+10,
+    kSpring+10,
+    kCyan-7,
+    kMagenta-4
 };
 
 static const Int_t lineStyles[4] = {
@@ -565,30 +562,69 @@ void close_program(TCanvas *canvases[] = nullptr, int numCanvases = 0,
     }
 }
 
-void drawCMSHeaders(const char* leftText = "#bf{CMS} #it{Preliminary}", const char* rightText = "", double rightTextSizeFactor = 1.0) {
-    TLatex* latexLeft = new TLatex();
-    latexLeft->SetNDC(); // Use Normalized Device Coordinates
-    latexLeft->SetTextFont(42); // Standard font
-    latexLeft->SetTextSize(0.035); 
+void drawCMSHeaders(
+    const char* leftText  = "#bf{CMS} #it{Work in Progress}",
+    const char* rightText = "",
+    double rightTextSizeFactor = 1.0
+) {
+    if (!gPad) return;
 
-    // Draw left text
-    latexLeft->SetTextAlign(11); // Align left, bottom
-    latexLeft->DrawLatex(gPad->GetLeftMargin(), 1 - gPad->GetTopMargin() + 0.01, leftText);
+    // ---- HARD RESET OF PAD STATE ----
+    gPad->SetTitle("");
+    gPad->SetName("");
+    gPad->SetGrid(0, 0);
+    gPad->SetTicks(1, 1);
+    gPad->Update();
 
-    TLatex* latexRight = new TLatex();
-    latexRight->SetNDC();
-    latexRight->SetTextFont(42);
-    // Apply size factor for right text only
-    latexRight->SetTextSize(0.04 * rightTextSizeFactor); 
+    const double yPos = 1.0 - gPad->GetTopMargin() + 0.01;
 
-    // Draw right text
-    latexRight->SetTextAlign(31); // Align right, bottom
-    latexRight->DrawLatex(1 - gPad->GetRightMargin(), 1 - gPad->GetTopMargin() + 0.01, rightText);
-    
-    // Clean up TLaTeX objects
-    delete latexLeft;
-    delete latexRight; 
+    // ===== Left CMS label =====
+    TLatex latexLeft;
+    latexLeft.SetNDC();
+    latexLeft.SetTextFont(42);
+    latexLeft.SetTextSize(0.035);
+    latexLeft.SetTextAlign(11);
+
+    latexLeft.DrawLatex(
+        gPad->GetLeftMargin(),
+        yPos,
+        leftText
+    );
+
+    // ===== Right header =====
+    if (rightText && rightText[0] != '\0') {
+
+        TLatex latexRight;
+        latexRight.SetNDC();
+        latexRight.SetTextFont(42);
+        latexRight.SetTextAlign(31);
+
+        const double xRight = 1.0 - gPad->GetRightMargin();
+        const double xLeft  = gPad->GetLeftMargin() + 0.25;
+        const double maxWidth = xRight - xLeft;
+
+        double textSize = 0.04 * rightTextSizeFactor;
+        latexRight.SetTextSize(textSize);
+
+        latexRight.SetTitle(rightText);
+        double textWidth = latexRight.GetXsize();
+
+        while (textWidth > maxWidth && textSize > 0.015) {
+            textSize *= 0.95;
+            latexRight.SetTextSize(textSize);
+            latexRight.SetTitle(rightText);
+            textWidth = latexRight.GetXsize();
+        }
+
+        latexRight.DrawLatex(xRight, yPos, rightText);
+    }
+
+    // ---- FINAL FLUSH ----
+    gPad->Modified();
+    gPad->Update();
 }
+
+
 
 void no_statbox(TH1D *histograms[], int numHistograms) {
     for (int i = 0; i < numHistograms; i++) {
