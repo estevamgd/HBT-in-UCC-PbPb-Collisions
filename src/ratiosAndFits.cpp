@@ -144,7 +144,7 @@ int main() {
     double bin_high = 3300.0;
     
     double plotXMin = 0.0;
-    double plotXMax = 0.1;
+    double plotXMax = 0.25;
     
     double fitMin = 0.05;
     double fitMax = 0.25;
