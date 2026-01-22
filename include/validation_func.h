@@ -27,7 +27,7 @@
 #include <TGraph.h>
 #include <TText.h>      
 #include <TLatex.h>
-#include "../include/my_func.h" 
+#include "my_func.h"
 
 
 std::map<std::string, double> compareHists(
