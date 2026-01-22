@@ -1777,7 +1777,7 @@ int main(){
             //sig_qlcms_double_loop_parallel(inputFile, treeName, bin_low, bin_high, selectedControlVar, test_limit_sig, test_limit_mix);
             //sig_qinv_double_loop_parallel(inputFile, treeName, bin_low, bin_high, selectedControlVar, test_limit_sig, test_limit_mix);
             //sig_double_loop(inputFile, treeName, bin_low, bin_high, selectedControlVar, test_limit_sig, test_limit_mix);
-            sig_qlcms_double_loop_parallel_pt(inputFile, treeName, bin_low, bin_high, selectedControlVar, ptMin, ptMax, test_limit_sig, test_limit_mix);
+            sig_qinv_double_loop_parallel_pt(inputFile, treeName, bin_low, bin_high, selectedControlVar, ptMin, ptMax, test_limit_sig, test_limit_mix);
         }
     }
     std::cout << "\nAnalysis finished." << std::endl;

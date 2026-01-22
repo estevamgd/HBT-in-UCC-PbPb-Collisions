@@ -31,7 +31,7 @@ int main() {
     FitRangeScanConfig scanCfgSR;
     scanCfgSR.fitType = FitFunctionType::LEVY;
 
-    scanCfgSR.fitMinLow  = 0.0;
+    scanCfgSR.fitMinLow  = 0.05;
     scanCfgSR.fitMinHigh = 0.10;
     scanCfgSR.fitMinStep = 0.005;
 
