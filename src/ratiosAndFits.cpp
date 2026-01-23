@@ -19,7 +19,7 @@ int main() {
     double plotXMin = 0.0;
     double plotXMax = 0.3;
     
-    double fitMin = 0.05;
+    double fitMin = 0.0;
     double fitMax = 0.25;
     double fitMinBg = 0.2;
 
@@ -51,9 +51,7 @@ int main() {
         q1, q2,
         modeLCMS,
         fitMin, fitMax, fitMinBg,
-        plotXMin, plotXMax,
-        nullptr,   
-        &scanCfgDR       
+        plotXMin, plotXMax
     );
 
     return 0;

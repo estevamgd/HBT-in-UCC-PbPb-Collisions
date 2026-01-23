@@ -1,5 +1,4 @@
-#ifndef MY_FUNC_H
-#define MY_FUNC_H
+#include "../include/my_func.h"
 
 #include "TFile.h"
 #include "TTree.h"
@@ -16,7 +15,6 @@
 #include <ctime>
 #include <sstream>
 #include <filesystem>
-#include "my_func.h"
 #include "Math/LorentzVector.h"
 #include "Math/PtEtaPhiM4D.h"
 #include "TMath.h"
@@ -26,38 +24,9 @@
 #include <cmath>
 #include <chrono>
 #include <string>
-#include "data_func.h"
+#include "../include/data_func.h"
 #include <TSystem.h>
 #include <TLatex.h>
-#include "AnalysisLog.h"
-
-using FourVector = ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>;
-
-enum class ControlVar { CENT = 0, MULT = 1, CENTHF = 2 };
-
-enum class qMode { QINV = 0, QLCMS = 1 };
-
-struct BenchmarkCentralityEntry {
-    std::string label;          // e.g. "0–5%"
-    double nEvents;             // number of processed events
-    std::vector<double> times;  // one per method (seconds)
-};
-
-struct BenchmarkMetadata {
-    std::string controlVariable;            // CENTRALITY, MULTIPLICITY, CENTHF, etc.
-    std::vector<std::string> inputFiles;    // files being compared
-    std::vector<std::string> methodNames;   // e.g. Single Loop, Double Loop
-};
-
-const char* getSelVarName(ControlVar varType) {
-    if (varType == ControlVar::CENT) return "CENT";
-    if (varType == ControlVar::MULT) return "MULT";
-    if (varType == ControlVar::CENTHF) return "CENTHF";
-    return "UNKNOWN";
-}
-
-enum LoopMode { SINGLE = 0, BOTH = 1, DOUBLE = 2 }; // Define an enum for modes
-
 
 static const Int_t colors[9] = {
     kRed-7,
@@ -108,7 +77,6 @@ TH1D* getHistogram(TString fileSearchPattern, const char* histName) {
         std::cerr << "Error: Could not open file: " << dataFile << std::endl;
         return nullptr;
     }
-    AnalysisLog::instance().addInputFile(dataFile.Data());
 
     TH1D* hist = dynamic_cast<TH1D*>(file->Get(histName));
     if (!hist) {
@@ -147,7 +115,6 @@ bool getFileTree(const char* file_name, const char* tree_name, TFile *&fr, TTree
         std::cerr << "Error: File could not be opened!" << std::endl;
         return false;
     }
-    AnalysisLog::instance().addInputFile(file_name);
 
     // Get the tree from the specified path
     fr->GetObject(tree_name, t);
@@ -273,12 +240,7 @@ void save_canvas_images(TCanvas *canvases[], int numCanvases, const char *path, 
         
             // Save the canvas as an image with the specified file type
             canvases[i]->Print(canvas_name);
-            AnalysisLog::instance().addSavedObject(
-                    LogEntryType::SavedCanvas,
-                    "Canvas image saved",
-                    path,
-                    canvas_name
-            );
+            
         }
     }
     
@@ -308,12 +270,6 @@ void save_histograms(TH1D *histograms[], int numHistograms, const char *path, co
             file_type);
 
         TFile saveFile(root_name, "NEw");
-        AnalysisLog::instance().addSavedObject(
-                LogEntryType::SavedHistogram,
-                "Histogram ROOT file saved",
-                path,
-                root_name
-        );
 
         for (int i = 0; i < numHistograms; i++) {
             histograms[i]->Write();
@@ -343,13 +299,6 @@ void save_histograms(TH1D *histograms[], int numHistograms, const char *path, co
             file_type);
 
         TFile saveFile(root_name, "NEw");
-        AnalysisLog::instance().addSavedObject(
-                LogEntryType::SavedHistogram,
-                "Histogram ROOT file saved",
-                path,
-                root_name
-        );
-
         std::cout << "Saving histograms to file: " << root_name << std::endl;
         for (int i = 0; i < numHistograms; i++) {
             histograms[i]->Write();
@@ -377,13 +326,6 @@ void save_benchmark(TStopwatch* stopWatches[], int numSW, const char* path, cons
             date.tm_hour, 
             date.tm_min, 
             date.tm_sec);
-
-    AnalysisLog::instance().addSavedObject(
-            LogEntryType::SavedBenchmark,
-            "Benchmark report saved",
-            path,
-            fileName
-    );
 
     // Abre arquivo
     std::ofstream outFile(fileName);
@@ -431,13 +373,6 @@ void save_benchmark_chrono(const std::vector<double>& durations, const std::vect
             date.tm_hour,
             date.tm_min,
             date.tm_sec);
-    
-    AnalysisLog::instance().addSavedObject(
-            LogEntryType::SavedBenchmark,
-            "Benchmark report saved",
-            path,
-            fileName
-    );
 
     std::ofstream outFile(fileName);
     if (!outFile.is_open()) {
@@ -496,13 +431,6 @@ void save_benchmark_validation(
             date.tm_hour,
             date.tm_min,
             date.tm_sec);
-    
-    AnalysisLog::instance().addSavedObject(
-            LogEntryType::SavedBenchmark,
-            "Benchmark report saved",
-            path,
-            fileName
-    );
 
     std::ofstream out(fileName);
     if (!out.is_open()) {
@@ -721,7 +649,3 @@ int setLoopMode(LoopMode mode) {
 //    Int_t charge;    
 //    Float_t weight;  
 //};
-
-
-
-#endif 

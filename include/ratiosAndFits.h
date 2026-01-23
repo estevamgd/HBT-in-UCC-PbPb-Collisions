@@ -154,6 +154,8 @@ void doubleRatioFit(ControlVar selectedControlVar,
         }
     }
     
+    AnalysisLog::instance().save("./logs", "ratiosAndFits");
+
     // Cleanup memory
     for (auto& f : fits)
     delete f.function;

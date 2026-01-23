@@ -313,6 +313,8 @@ void sig_qinv_double_loop(
     save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type);
     const char *ifile_type2 = "pdf";
     save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
+
+    AnalysisLog::instance().save("./logs", "makeSignalQinv");
     
     // Closing program
     close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
@@ -588,6 +590,8 @@ void sig_qinv_double_loop_parallel(
     save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type);
     const char *ifile_type2 = "pdf";
     save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
+
+    AnalysisLog::instance().save("./logs", "makeSignalQinvParallel");
     
     close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
 }
@@ -882,6 +886,8 @@ void sig_qinv_double_loop_parallel_pt(
     save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type);
     const char *ifile_type2 = "pdf";
     save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
+
+    AnalysisLog::instance().save("./logs", "makeSignalQinvParallelPt");
     
     close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
 }
@@ -1179,6 +1185,8 @@ void sig_qlcms_double_loop(
     const char *ifile_type2 = "pdf";
     save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
     
+    AnalysisLog::instance().save("./logs", "makeSignalQLCMS");
+
     // Closing program
     close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
 }
@@ -1453,6 +1461,8 @@ void sig_qlcms_double_loop_parallel(
     const char *ifile_type2 = "pdf";
     save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
     
+    AnalysisLog::instance().save("./logs", "makeSignalQLCMSParallel");
+
     close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
 }
 
@@ -1743,6 +1753,8 @@ void sig_qlcms_double_loop_parallel_pt(
     save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type);
     const char *ifile_type2 = "pdf";
     save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
+
+    AnalysisLog::instance().save("./logs", "makeSignalQLCMSParallelPt");
     
     close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
 }
