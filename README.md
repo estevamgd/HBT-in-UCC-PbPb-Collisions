@@ -1,28 +1,61 @@
 # HBT Analysis in UCC PbPb Collisions
 
-<!-- Optional: Place a logo or banner for your project -->
-
-[![License](https://img.shields.io/github/license/estevamgd/HBT-in-Peripheral-PbPb-Collisions)](LICENSE)
-[![Issues](https://img.shields.io/github/issues/estevamgd/HBT-in-Peripheral-PbPb-Collisions)](https://github.com/yourusername/HBT-in-Peripheral-PbPb-Collisions/issues)
-[![Last Commit](https://img.shields.io/github/last-commit/estevamgd/HBT-in-Peripheral-PbPb-Collisions)](https://github.com/yourusername/HBT-in-Peripheral-PbPb-Collisions/commits/main)
+[![Issues](https://img.shields.io/github/issues/estevamgd/HBT-in-UCC-PbPb-Collisions)](https://github.com/estevamgd/HBT-in-UCC-PbPb-Collisions/issues)
+[![Last Commit](https://img.shields.io/github/last-commit/estevamgd/HBT-in-UCC-PbPb-Collisions)](https://github.com/estevamgd/HBT-in-UCC-PbPb-Collisions/commits/main)
 
 ## Overview
 
-This repository contains code for analyzing **Hanbury-Brown and Twiss (HBT) correlations** in UCC PbPb collisions using the ROOT framework. The goal of this project is to characterize the spatial and temporal dimensions of particle-emitting regions in these collisions, providing insight into the properties of **Quark-Gluon Plasma (QGP)**.
+This repository provides a comprehensive toolkit for analyzing Hanbury-Brown and Twiss (HBT) correlations in ultra-central PbPb collisions using CMS Open Data and the ROOT framework. The analysis aims to extract spatial and temporal information about the particle-emitting source, contributing to the study of the Quark-Gluon Plasma (QGP).
 
-This analysis uses CMS Open Data for collisions at a center-of-mass energy of 2.76 TeV per nucleon pair. The repository also includes various tools for data selection, event centrality categorization, and HBT correlation calculations.
+## Features
 
----
-
-## Key Features
-
-- **Centrality Selection**: Filters collision data based on event centrality.
-- **HBT Analysis**: Performs HBT correlation analysis with options for different source parameters and event types.
-- **Data Visualization**: Generates plots for correlation functions, source radii, and other relevant properties.
+- **Centrality Selection**: Tools for selecting and categorizing events by centrality or multiplicity.
+- **Signal and Mixed Event Generation**: Scripts for generating signal and mixed-event distributions, including parallelized and optimized versions.
+- **HBT Correlation Analysis**: Calculation of correlation functions with support for various fit models (Exponential, Gaussian, Lévy, etc.).
+- **Fitting and Ratio Extraction**: Automated fitting routines and extraction of single and double ratios.
+- **Validation and Benchmarking**: Utilities for validating results, comparing methods, and benchmarking performance (including timing comparisons).
+- **Data Visualization**: Generation of publication-quality plots for correlation functions, source radii, timing comparisons, and more.
+- **ROOT Macro Utilities**: Helper functions for histogram management, file handling, and batch processing.
 
 ## Getting Started
 
 ### Prerequisites
 
-- **ROOT**: Ensure that ROOT is installed and configured with multithreading support.
-- **C++**: The analysis scripts are written in C++.
+- [ROOT](https://root.cern/) (with multithreading support)
+- C++17 or newer
+- CMS Open Data (or compatible ROOT files)
+
+### Build and Run
+
+Most analysis scripts are C++ files or ROOT macros. Example for compiling and running:
+
+```bash
+g++ -std=c++17 -pthread src/makeSignal.cpp -o makeSignal `root-config --cflags --libs`
+./makeSignal
+```
+
+Or, for ROOT macros:
+
+```bash
+root -l src/hbt_analysis_perpheralPbPb.C
+```
+
+### Directory Structure
+
+- `src/` — Main analysis scripts and macros
+- `include/` — Header files and utility functions
+- `tests/` — Test scripts and validation tools
+- `data/` — Input ROOT files
+- `imgs/` — Output plots and images
+- `benchmarks/` — Benchmarking results
+
+## Example Analyses
+
+- **Signal and Mixing Distributions**: `makeSignal.cpp`, `makeSignalMixOLMParallel.cpp`
+- **HBT Fitting**: `fitting_sr.C`, `fitSingleRatio.cpp`
+- **Timing Comparisons**: `compareTiming.cpp`, `timing_comparison_plot_TGraph.cpp`
+- **Validation**: `runValidation.cpp`, `validation_func.h`
+
+## Contributing
+
+Contributions are welcome! Please open issues or pull requests for bug fixes, new features, or documentation improvements.
