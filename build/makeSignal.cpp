@@ -1759,10 +1759,223 @@ void sig_qlcms_double_loop_parallel_pt(
     close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
 }
 
+void sig_qtqzq0q_double_loop_parallel_pt(
+    const char *fileInput, 
+    const char *treeInput, 
+    double selVarMoreeq, 
+    double selVarLess, 
+    ControlVar selectionVarType = ControlVar::CENT,
+    Double_t ptMin = 0.5, 
+    Double_t ptMax = -1.0,  
+    int test_limit_sig = -1,
+    int test_limit_mix = -1,
+    Float_t vertexDistance = 2, 
+    Int_t pairChargeMult = 1, 
+    int poolSizeInt = 10) 
+{
+    // Load the ROOT file and tree
+    TFile *fr = nullptr;
+    TTree *t = nullptr;
+    getFileTree(fileInput, treeInput, fr, t);
+
+    // Variables from the tree
+    Int_t maxSize = 50000, Ntrk, hiBin, trkCharge[maxSize]; 
+    Float_t HFsumET, pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
+            pionMass = 0.13957039; // Pion mass [GeV] from PDG
+    
+    double* selectionVar, displaySelVarMoreeq, displaySelVarLess;
+    double hiBinProxy, NtrkProxy, HFsumETProxy;
+    int thread_count = std::thread::hardware_concurrency();
+
+    t->SetBranchAddress("HFsumET", &HFsumET);
+    t->SetBranchAddress("Ntrk", &Ntrk);
+    t->SetBranchAddress("hiBin", &hiBin);
+    t->SetBranchAddress("pvZ", &pvZ); 
+    t->SetBranchAddress("trkCharge", trkCharge);
+    t->SetBranchAddress("trkWeight", trkWeight);
+    t->SetBranchAddress("trkPt", trkPt);
+    t->SetBranchAddress("trkEta", trkEta);
+    t->SetBranchAddress("trkPhi", trkPhi);
+
+    const char * selectionVarName;
+
+    if (selectionVarType == ControlVar::CENT){
+        selectionVar = &hiBinProxy;
+        displaySelVarMoreeq = selVarMoreeq;
+        displaySelVarLess = selVarLess;
+        selVarMoreeq = selVarMoreeq*2;
+        selVarLess = selVarLess*2;
+        selectionVarName = "CENT";
+    } else if (selectionVarType == ControlVar::MULT){
+        selectionVar = &NtrkProxy;
+        displaySelVarMoreeq = selVarMoreeq;
+        displaySelVarLess = selVarLess;
+        selectionVarName = "MULT";
+    } else if (selectionVarType == ControlVar::CENTHF){
+        selectionVar = &HFsumETProxy;
+        displaySelVarMoreeq = selVarMoreeq;
+        displaySelVarLess = selVarLess;
+        selectionVarName = "CENTHF";
+    } else {
+        std::cerr << "Invalid selection variable type!" << std::endl;
+        return;
+    }
+
+    // Getting how many entries
+    Long64_t nentries = t->GetEntries();
+    std::cout << "#Events: " << nentries << std::endl;
+    
+    int processedEventsSig = 0;
+    int processedEventsMix = 0;
+
+    // === HISTOGRAMS ===
+    double nnscale = 1000, x0 = 0., xt=0.02;
+
+    TH2D* h_qtqz_SS_cor = new TH2D("h_qtqz_SS_cor", "", nnscale, x0, xt, nnscale, x0, xt);
+    TH2D* h_qtqz_OS_cor = new TH2D("h_qtqz_OS_cor", "", nnscale, x0, xt, nnscale, x0, xt);
+    TH2D* h_q0q_SS_cor = new TH2D("h_q0q_SS_cor", "", nnscale, x0, xt, nnscale, x0, xt);
+    TH2D* h_q0q_OS_cor = new TH2D("h_q0q_OS_cor", "", nnscale, x0, xt, nnscale, x0, xt);
+
+    h_qtqz_SS_cor->Sumw2();
+    h_qtqz_OS_cor->Sumw2();
+    h_q0q_SS_cor->Sumw2();
+    h_q0q_OS_cor->Sumw2();
+    
+    h_qtqz_SS_cor->GetXaxis()->SetTitle("q_{t} [GeV]");
+    h_qtqz_SS_cor->GetYaxis()->SetTitle("q_{z} [GeV]");
+    h_qtqz_SS_cor->GetZaxis()->SetTitle("#Pairs");
+    h_qtqz_OS_cor->GetXaxis()->SetTitle("q_{t} [GeV]");
+    h_qtqz_OS_cor->GetYaxis()->SetTitle("q_{z} [GeV]");
+    h_qtqz_OS_cor->GetZaxis()->SetTitle("#Pairs");
+    h_q0q_SS_cor->GetXaxis()->SetTitle("q_{0} [GeV]");
+    h_q0q_SS_cor->GetYaxis()->SetTitle("|#vec{q}| [GeV]");
+    h_q0q_SS_cor->GetZaxis()->SetTitle("#Pairs");
+    h_q0q_OS_cor->GetXaxis()->SetTitle("q_{0} [GeV]");
+    h_q0q_OS_cor->GetYaxis()->SetTitle("|#vec{q}| [GeV]");
+    h_q0q_OS_cor->GetZaxis()->SetTitle("#Pairs");
+
+    double duration_full = 0.0, duration_mix = 0.0, duration_signal = 0.0;
+
+    std::vector<std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>> vectorEventTracks4V;
+    std::vector<std::vector<Int_t>> vectorEventTracksCharge;
+    std::vector<std::vector<Float_t>> vectorEventTracksWeight;
+    std::vector<std::vector<Float_t>> vectorEventTracksPt;
+    
+    size_t poolSize = static_cast<size_t>(poolSizeInt);
+
+    std::cout << "Processing " << fileInput << "/" << treeInput << " events with centrality from " << displaySelVarMoreeq << " to " << displaySelVarLess << std::endl;
+    auto start_full = std::chrono::high_resolution_clock::now();
+    for (Long64_t i = 0; i < nentries; i++){
+        t->GetEntry(i);
+        
+        hiBinProxy = hiBin;
+        NtrkProxy = Ntrk;
+        HFsumETProxy = HFsumET;
+        
+        if (processedEventsSig == test_limit_sig) break;
+        if (processedEventsMix == test_limit_mix) break;
+        if (!(selVarMoreeq <= *selectionVar && *selectionVar < selVarLess)) continue;
+        processedEventsSig++;
+        
+        std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> currentEventTracks4V;
+        std::vector<Int_t> currentEventTracksCharge;
+        std::vector<Float_t> currentEventTracksWeight;
+        std::vector<Float_t> currentEventTracksPt;
+
+        for (int j = 0; j < Ntrk; j++) {
+            ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> currentTrack4V(trkPt[j], trkEta[j], trkPhi[j], pionMass);
+            currentEventTracks4V.push_back(currentTrack4V);
+            currentEventTracksCharge.push_back(trkCharge[j]);
+            currentEventTracksWeight.push_back(trkWeight[j]);
+            currentEventTracksPt.push_back(trkPt[j]);
+        }
+        
+        
+        // === SIGNAL (Parallelized) ===
+        auto start_signal_lap = std::chrono::high_resolution_clock::now();
+        processSignalqtqzq0q(
+            currentEventTracks4V.size(),
+            thread_count,
+            trkWeight, 
+            trkCharge,
+            trkPt, 
+            currentEventTracks4V, 
+            h_qtqz_SS_cor, 
+            h_qtqz_OS_cor, 
+            h_q0q_SS_cor, 
+            h_q0q_OS_cor
+        );
+
+        auto end_signal_lap = std::chrono::high_resolution_clock::now();
+        duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
+    }
+    auto end_full = std::chrono::high_resolution_clock::now();
+    duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
+
+    std::cout << "#Processed Events(Sig): " << processedEventsSig << std::endl;
+
+    // Save histograms
+    TCanvas *c_sig_qtqz_cor_SS = new TCanvas("c_sig_qtqz_cor_SS", "Signal Distributions", 1200, 800);
+    TCanvas *c_sig_qtqz_cor_OS = new TCanvas("c_sig_qtqz_cor_OS", "Signal Distributions", 1200, 800);
+    TCanvas *c_sig_q0q_cor_SS = new TCanvas("c_sig_q0q_cor_SS", "Signal Correlation Distributions", 1200, 800);
+    TCanvas *c_sig_q0q_cor_OS = new TCanvas("c_sig_q0q_cor_OS", "Signal Correlation Distributions", 1200, 800);
+
+    c_sig_qtqz_cor_SS->cd(); gStyle->SetOptStat(0); h_qtqz_SS_cor->Draw("COLZ"); gStyle->SetPalette(kLake);
+    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Signal SS | (q_{t}, q_{z})");
+    c_sig_qtqz_cor_OS->cd(); gStyle->SetOptStat(0); h_qtqz_OS_cor->Draw("COLZ"); gStyle->SetPalette(kLake);
+    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Signal OS | (q_{t}, q_{z})");
+    c_sig_q0q_cor_SS->cd(); gStyle->SetOptStat(0); h_q0q_SS_cor->Draw("COLZ"); gStyle->SetPalette(kLake);
+    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Signal SS Cor | (q_{0}, q_{q})");
+    c_sig_q0q_cor_OS->cd(); gStyle->SetOptStat(0); h_q0q_OS_cor->Draw("COLZ"); gStyle->SetPalette(kLake);
+    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Signal OS Cor | (q_{0}, q_{q})");
+
+    TH2D *histograms[] = {h_qtqz_SS_cor, h_qtqz_OS_cor, h_q0q_SS_cor, h_q0q_OS_cor};
+    Int_t numHistograms = 4;
+
+    TCanvas *canvases[] = {c_sig_qtqz_cor_SS, c_sig_qtqz_cor_OS, c_sig_q0q_cor_OS, c_sig_q0q_cor_SS};
+    int numCanvases = 4;
+
+    TLegend *legends[] = {};
+    int numLegends = 0;
+
+    char prefix[100];
+    if (ptMax > 0){
+        if (ptMin > 0){
+            sprintf(prefix, "sig_qtqzq0q_parallel_pT-from-%f-to-%f_%s_%f-%f", ptMin, ptMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+        } else {
+            sprintf(prefix, "sig_qtqzq0q_parallel_pT-to-%f_%s_%f-%f", ptMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+        }
+    } else {
+        if (ptMin > 0){
+            sprintf(prefix, "sig_qtqzq0q_parallel_pT-from-%f_%s_%f-%f", ptMin, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+        } else {
+            sprintf(prefix, "sig_qtqzq0q_parallel_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+        }
+    } 
+    const char *spath = "benchmarks";
+    std::vector<double> durations = {duration_full, duration_signal, duration_mix};
+    std::vector<std::string> labels = {"Total Time", "Signal Time", "Mix Time"};
+    save_benchmark_chrono(durations, labels, spath, prefix, processedEventsSig, processedEventsMix);
+    
+    const char *hpath = "./data/signal_mix/";
+    save_histograms(histograms, numHistograms, hpath, prefix, displaySelVarMoreeq, displaySelVarLess);
+
+    const char *ipath = "./imgs/test/signal_mix/";
+    const char *ifile_type = "png";
+    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type);
+    const char *ifile_type2 = "pdf";
+    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
+
+    AnalysisLog::instance().save("./logs", "makeSignalqtqzq0qParallelPt");
+    
+    close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
+}
+
+
 int main(){
     ROOT::EnableImplicitMT();
     // To compile use:
-    // g++ -std=c++17 -pthread makeSignal.cpp -o makeSignal `root-config --cflags --libs`
+    // g++ -std=c++17 -pthread makeSignal.cpp -o makeSignal `root-config --cflags --libs` -lGenVector
     // To run use:
     // ./makeSignal
     // --- Analysis Configuration ---
@@ -1789,7 +2002,8 @@ int main(){
             //sig_qlcms_double_loop_parallel(inputFile, treeName, bin_low, bin_high, selectedControlVar, test_limit_sig, test_limit_mix);
             //sig_qinv_double_loop_parallel(inputFile, treeName, bin_low, bin_high, selectedControlVar, test_limit_sig, test_limit_mix);
             //sig_double_loop(inputFile, treeName, bin_low, bin_high, selectedControlVar, test_limit_sig, test_limit_mix);
-            sig_qinv_double_loop_parallel_pt(inputFile, treeName, bin_low, bin_high, selectedControlVar, ptMin, ptMax, test_limit_sig, test_limit_mix);
+            //sig_qinv_double_loop_parallel_pt(inputFile, treeName, bin_low, bin_high, selectedControlVar, ptMin, ptMax, test_limit_sig, test_limit_mix);
+            sig_qtqzq0q_double_loop_parallel_pt(inputFile, treeName, bin_low, bin_high, selectedControlVar, ptMin, ptMax, test_limit_sig, test_limit_mix);
         }
     }
     std::cout << "\nAnalysis finished." << std::endl;

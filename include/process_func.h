@@ -19,6 +19,7 @@
 #include "my_func.h"
 #include "Math/LorentzVector.h"
 #include "Math/PtEtaPhiM4D.h"
+#include "Math/Boost.h"
 #include "TMath.h"
 #include <vector>
 #include <thread>
@@ -955,5 +956,117 @@ void processMixQLCMS(
         vectorEventTracksPt.clear();
     }
 }
+
+// Process 2D histograms for qt,qz, q0, |q|
+// Multithreaded version with pT cut
+void processSignalqtqzq0q(
+    size_t n_tracks,
+    int thread_count,
+    const Float_t* trkWeight,
+    const Int_t* trkCharge,
+    const Float_t* trkPt,
+    const std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>& currentEventTracks4V,
+    TH2D* h_qtqz_SS_cor,
+    TH2D* h_qtqz_OS_cor,
+    TH2D* h_q0q_SS_cor,
+    TH2D* h_q0q_OS_cor)
+
+{
+    if (n_tracks <= 1) return; // check if event has 2 or more tracks
+    if (thread_count == 0) thread_count = 1;
+
+    // A simple struct to hold the set of histograms for one thread
+    struct LocalHistograms {
+        TH2D *qtqz_ss_cor, *qtqz_os_cor;
+        TH2D *q0q_ss_cor, *q0q_os_cor;
+
+        LocalHistograms(
+            const TH2D* b2, const TH2D* b4,
+            const TH2D* b6, const TH2D* b8)
+        {
+            qtqz_ss_cor = (TH2D*)b2->Clone(Form("%s_%p", b2->GetName(), this));
+            qtqz_os_cor = (TH2D*)b4->Clone(Form("%s_%p", b4->GetName(), this));
+
+            q0q_ss_cor  = (TH2D*)b6->Clone(Form("%s_%p", b6->GetName(), this));
+            q0q_os_cor  = (TH2D*)b8->Clone(Form("%s_%p", b8->GetName(), this));
+
+            qtqz_ss_cor->Reset();
+            qtqz_os_cor->Reset();
+            q0q_ss_cor->Reset();
+            q0q_os_cor->Reset();
+        }
+
+        ~LocalHistograms() {
+            delete qtqz_ss_cor;
+            delete qtqz_os_cor;
+            delete q0q_ss_cor;
+            delete q0q_os_cor;
+        }
+    };
+
+    std::vector<std::thread> threads;
+    std::vector<std::unique_ptr<LocalHistograms>> local_hists;
+
+    // Create a set of local histograms for each thread
+    for (int i = 0; i < thread_count; ++i) {
+        local_hists.push_back(std::make_unique<LocalHistograms>(h_qtqz_SS_cor, h_qtqz_OS_cor, h_q0q_SS_cor, h_q0q_OS_cor));
+    }
+    // The task for each thread
+    auto thread_task = [&](size_t start_p1, size_t end_p1, LocalHistograms* hists) {
+        for (size_t p1 = start_p1; p1 < end_p1; p1++) {
+            for (size_t p2 = p1 + 1; p2 < n_tracks; p2++) {
+                if (std::isinf(trkWeight[p1] * trkWeight[p2])) continue;
+                if (trkPt[p1] <= MIN_PT_CUT || trkPt[p2] <= MIN_PT_CUT) continue; // pT cut
+
+                auto tp1 = currentEventTracks4V[p1], tp2 = currentEventTracks4V[p2];
+
+                // ---- LCMS boost ----
+                auto K = 0.5 * (tp1 + tp2);
+                ROOT::Math::BoostZ boost(-K.Pz() / K.E());
+                
+                tp1 = boost(tp1);
+                tp2 = boost(tp2);
+
+                // ---- relative four-momentum ----
+                auto q = tp1 - tp2;
+                
+                double q0 = q.E();
+                double qz = q.Pz();
+                double qt = std::sqrt(q.Px()*q.Px() + q.Py()*q.Py());
+                double qabs = std::sqrt(qt*qt + qz*qz);
+
+                if (trkCharge[p1] * trkCharge[p2] > 0) {
+                    hists->qtqz_ss_cor->Fill(qt, qz, trkWeight[p1] * trkWeight[p2]);
+                    hists->q0q_ss_cor->Fill(q0, qabs, trkWeight[p1] * trkWeight[p2]);
+                } else {
+                    hists->qtqz_os_cor->Fill(qt, qz, trkWeight[p1] * trkWeight[p2]);
+                    hists->q0q_os_cor->Fill(q0, qabs, trkWeight[p1] * trkWeight[p2]);
+                }
+            }
+        }
+    };
+    // Distribute the work among threads
+    size_t chunk_size = n_tracks / thread_count;
+    for (int t = 0; t < thread_count; t++) {
+        size_t start_i = t * chunk_size;
+        size_t end_i = (t == thread_count - 1) ? n_tracks : (t + 1) * chunk_size;
+
+        // Each thread gets a pointer to its own set of histograms
+        threads.emplace_back(thread_task, start_i, end_i, local_hists[t].get());
+
+    }
+    // Wait for all threads to finish
+    for (auto& thread : threads) {
+        thread.join();
+    }
+    // Merge the results from local histograms into the main ones
+    for (int t = 0; t < thread_count; ++t) {
+        h_qtqz_SS_cor->Add(local_hists[t]->qtqz_ss_cor);
+        h_qtqz_OS_cor->Add(local_hists[t]->qtqz_os_cor);
+        h_q0q_SS_cor->Add(local_hists[t]->q0q_ss_cor);
+        h_q0q_OS_cor->Add(local_hists[t]->q0q_os_cor);
+    }
+}
+
 
 #endif

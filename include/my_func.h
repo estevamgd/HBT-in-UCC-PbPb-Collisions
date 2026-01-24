@@ -322,6 +322,43 @@ void save_histograms(TH1D *histograms[], int numHistograms, const char *path, co
     
 }
 
+void save_histograms(TH2D *histograms[], int numHistograms, const char *path, const char *prefix,
+                    int centmult_min, int centmult_max) {
+    // Cria diretório se necessário
+    std::filesystem::create_directories(path);
+    
+    if (numHistograms > 0) {
+        const char *file_type = "root";
+        time_t ttime = time(NULL);
+        struct tm date = *localtime(&ttime);
+        char root_name[200];  
+
+        sprintf(root_name, "%s%s_cent%dto%d-%d-%02d-%02d-%02d-%02d-%02d.%s", 
+            path, prefix, 
+            centmult_min, centmult_max,
+            date.tm_year + 1900, 
+            date.tm_mon + 1, 
+            date.tm_mday, 
+            date.tm_hour, 
+            date.tm_min, 
+            date.tm_sec, 
+            file_type);
+
+        TFile saveFile(root_name, "NEw");
+        AnalysisLog::instance().addSavedObject(
+                LogEntryType::SavedHistogram,
+                "Histogram ROOT file saved",
+                path,
+                root_name
+        );
+
+        for (int i = 0; i < numHistograms; i++) {
+            histograms[i]->Write();
+        }
+    }
+    
+}
+
 void save_histograms(TH1D *histograms[], int numHistograms, const char *path, const char *prefix) {
     // Cria diretório se necessário
     std::filesystem::create_directories(path);
@@ -343,6 +380,42 @@ void save_histograms(TH1D *histograms[], int numHistograms, const char *path, co
             file_type);
 
         TFile saveFile(root_name, "NEw");
+        AnalysisLog::instance().addSavedObject(
+                LogEntryType::SavedHistogram,
+                "Histogram ROOT file saved",
+                path,
+                root_name
+        );
+
+        std::cout << "Saving histograms to file: " << root_name << std::endl;
+        for (int i = 0; i < numHistograms; i++) {
+            histograms[i]->Write();
+        }
+    }
+    
+}
+
+void save_histograms(TH2D *histograms[], int numHistograms, const char *path, const char *prefix) {
+    // Cria diretório se necessário
+    std::filesystem::create_directories(path);
+    
+    if (numHistograms > 0) {
+        const char *file_type = "root";
+        time_t ttime = time(NULL);
+        struct tm date = *localtime(&ttime);
+        char root_name[200];  
+
+        sprintf(root_name, "%s%s-%d-%02d-%02d-%02d-%02d-%02d.%s", 
+            path, prefix, 
+            date.tm_year + 1900, 
+            date.tm_mon + 1, 
+            date.tm_mday, 
+            date.tm_hour, 
+            date.tm_min, 
+            date.tm_sec, 
+            file_type);
+
+        TFile saveFile(root_name, "NEW");
         AnalysisLog::instance().addSavedObject(
                 LogEntryType::SavedHistogram,
                 "Histogram ROOT file saved",
@@ -567,8 +640,7 @@ void save_benchmark_validation(
 void close_program(TCanvas *canvases[] = nullptr, int numCanvases = 0,
     TH1D *histograms[] = nullptr, int numHistograms = 0,
     TLegend *legends[] = nullptr, int numLegends = 0,
-    TFile *fr = nullptr,
-    TH2D *histograms2d[] = nullptr, int numHistograms2d = 0)
+    TFile *fr = nullptr)
 {
     // Delete Canvases
     if (canvases != nullptr && numCanvases > 0) {
@@ -591,10 +663,37 @@ void close_program(TCanvas *canvases[] = nullptr, int numCanvases = 0,
     }
     }
 
-    // --- CORRECTED: Delete 2D Histograms (was in a faulty else block) ---
-    if (histograms2d != nullptr && numHistograms2d > 0) {
-        for (int i = 0; i < numHistograms2d; i++) {
-            delete histograms2d[i];
+    // Close and delete the TFile
+    if (fr != nullptr) {
+    fr->Close();
+    delete fr;
+    }
+}
+
+// Deletes canvases, histograms, legends, and closes the TFile
+void close_program(TCanvas *canvases[] = nullptr, int numCanvases = 0,
+    TH2D *histograms[] = nullptr, int numHistograms = 0,
+    TLegend *legends[] = nullptr, int numLegends = 0,
+    TFile *fr = nullptr)
+{
+    // Delete Canvases
+    if (canvases != nullptr && numCanvases > 0) {
+        for (int i = 0; i < numCanvases; i++) {
+            delete canvases[i];
+    }
+    }
+
+    // Delete 1D Histograms
+    if (histograms != nullptr && numHistograms > 0) {
+        for (int i = 0; i < numHistograms; i++) {
+            delete histograms[i];
+    }
+    }
+
+    // --- NEW: Delete Legends ---
+    if (legends != nullptr && numLegends > 0) {
+        for (int i = 0; i < numLegends; i++) {
+            delete legends[i];
     }
     }
 
