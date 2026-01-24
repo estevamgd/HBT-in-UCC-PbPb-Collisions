@@ -26,8 +26,8 @@ void normalizer(TH1D* histograms[],
 
         // Integral in [q1, q2], including bin widths
         double integral = hist->Integral(bin1, bin2, "width");
-
-        if (integral > 0.0) {
+        
+        if (integral != 0.0) {
             hist->Scale(scale / integral);
         }
     }

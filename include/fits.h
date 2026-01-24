@@ -143,7 +143,7 @@ std::vector<FitOutput> fitHistogramMultiple(
     return outputs;
 }
 
-void drawAndSaveFits(
+void saveFits(
     TH1D* hist,
     const std::vector<FitOutput>& fits,
     const char* canvasName,
@@ -156,7 +156,7 @@ void drawAndSaveFits(
     TH1D* histClone = (TH1D*)(hist->Clone("histClone"));
     gStyle->SetOptStat(0);     
     gStyle->SetPalette(kBlueRedYellow);
-    TCanvas* c = new TCanvas(canvasName, "Correlation Fits", 1200, 900);
+    TCanvas* c = new TCanvas(canvasName, "Correlation Fits", 1200, 800);
     c->SetLeftMargin(0.12);
     c->SetBottomMargin(0.12);
 
@@ -190,7 +190,7 @@ void drawAndSaveFits(
     for (const auto& fit : fits) {
         fit.function->Draw("SAME");
         fit.function->SetLineColor(colors[fitIndex]);
-         fit.function->SetLineStyle(lineStyles[0]);
+        fit.function->SetLineStyle(lineStyles[0]);
         fit.function->SetLineWidth(2);
 
         leg->AddEntry(fit.function, fit.displayName.c_str(), "l");

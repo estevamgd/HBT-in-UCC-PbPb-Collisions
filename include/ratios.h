@@ -19,6 +19,7 @@
 void saveRatio(TH1D* hRatio,
                     const char* outputPrefix,
                     double plotXMin = 0.0, double plotXMax = 10.0,
+                    double plotYMin = 0.9, double plotYMax = 2.1,
                     const char* outputHistName = "sr_cor",
                     const char* plotHeaderText = "PbPb 2.76 TeV | Single Ratio",
                     const char* histTittle = "; q_{inv} [GeV]; C(q_{inv}) = SS/OS",
@@ -39,6 +40,7 @@ void saveRatio(TH1D* hRatio,
     cRatio->SetBottomMargin(0.12);
     hRatioClone->GetYaxis()->SetTitleOffset(1.2);
     hRatioClone->GetXaxis()->SetRangeUser(plotXMin, plotXMax);
+    hRatioClone->GetYaxis()->SetRangeUser(plotYMin, plotYMax);
     hRatioClone->Draw("E1 PLC");
     
     TLegend *legendRatio = new TLegend(0.6, 0.8, 0.88, 0.88);

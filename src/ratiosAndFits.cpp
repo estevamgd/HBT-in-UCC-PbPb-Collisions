@@ -13,11 +13,21 @@ int main() {
     qMode modeLCMS = qMode::QLCMS;
     qMode modeQinv = qMode::QINV;
     
+    std::vector<std::pair<FitFunctionType, FitInit>> models = {
+        {FitFunctionType::EXPONENTIAL, {{1.0, 0.5, 5.0, 0.0}}},
+        {FitFunctionType::GAUSSIAN, {{1.0, 0.5, 5.0, 0.0}}},
+        {FitFunctionType::LEVY2, {{0.6, 4.0, 1.5}}},
+        {FitFunctionType::DOUBLE_LEVY, {{0.6, 4.0, 1.5, 0.0, 1.0}}}
+    };
+
     double bin_low = 3200.0;
     double bin_high = 3300.0;
     
     double plotXMin = 0.0;
     double plotXMax = 0.3;
+
+    double plotYMin = 0.9;
+    double plotYMax = 2.1;
     
     double fitMin = 0.0;
     double fitMax = 0.25;
@@ -47,12 +57,23 @@ int main() {
     // ===== Analysis =====
     doubleRatioFit(
         selectedControlVar,
+        models,
         bin_low, bin_high,
         q1, q2,
         modeLCMS,
         fitMin, fitMax, fitMinBg,
-        plotXMin, plotXMax
+        plotXMin, plotXMax, plotYMin, plotYMax
     );
-
+    /*
+    doubleRatioFit(
+        selectedControlVar,
+        models,
+        bin_low, bin_high,
+        q1, q2,
+        modeQinv,
+        fitMin, fitMax, fitMinBg,
+        plotXMin, plotXMax, plotYMin, plotYMax
+    );
+    */
     return 0;
 }

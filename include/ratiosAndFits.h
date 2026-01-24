@@ -8,11 +8,13 @@
 #include "../include/fitRangeScan.h"
 
 void doubleRatioFit(ControlVar selectedControlVar,
+                    std::vector<std::pair<FitFunctionType, FitInit>> models,
                     double bin_low, double bin_high,
                     Double_t q1, Double_t q2,
                     qMode mode,
                     double fitMin = 0.0, double fitMax = 10.0, double fitMinBG = 0.15,
                     double plotXMin = 0.0, double plotXMax = 10.0, 
+                    double plotYMin = 0.0, double plotYMax = 2.1,
                     const FitRangeScanConfig* scanCfgSR = nullptr,
                     const FitRangeScanConfig* scanCfgDR = nullptr,
                     const char* fileName = nullptr)
@@ -43,7 +45,9 @@ void doubleRatioFit(ControlVar selectedControlVar,
         q_ssHist_cor, q_osHist_cor, q1, q2, "sr_cor"
     );
 
-    saveRatio(singleRatio, "sr_cor", plotXMin, plotXMax, 
+    saveRatio(singleRatio, 
+        Form("sr_cor_%s_%s_%.0f-%.0f", qmodename, selectionVarName, bin_low, bin_high), 
+        plotXMin, plotXMax, plotYMin, plotYMax,
         "sr_cor", "PbPb 2.76 TeV | Single Ratio",
         (mode == qMode::QLCMS)
             ? "; q_{LCMS} [GeV]; C(q_{LCMS}) = SS/OS"
@@ -52,13 +56,7 @@ void doubleRatioFit(ControlVar selectedControlVar,
     );
 
     // ===== Single Ratio Fits ===== //
-    std::vector<std::pair<FitFunctionType, FitInit>> models1 = {
-        {FitFunctionType::EXPONENTIAL, {{1.0, 0.5, 5.0, 0.0}}},
-        {FitFunctionType::GAUSSIAN, {{1.0, 0.5, 5.0, 0.0}}},
-        {FitFunctionType::LEVY, {{1.0, 0.5, 5.0, 0.0, 1.2}}},
-        //{FitFunctionType::LEVY2, {{0.6, 4.0, 1.5}}},
-        {FitFunctionType::DOUBLE_LEVY, {{0.6, 4.0, 1.5, 0.0, 1.0}}}
-    };
+    std::vector<std::pair<FitFunctionType, FitInit>> models1 = models;
     
     auto fits1 = fitHistogramMultiple(
         singleRatio,
@@ -83,7 +81,7 @@ void doubleRatioFit(ControlVar selectedControlVar,
     }
 
     // ===== Draw & Save once ===== //
-    drawAndSaveFits(
+    saveFits(
         singleRatio,
         fits1,
         "c_single_ratio_fits",
@@ -92,7 +90,7 @@ void doubleRatioFit(ControlVar selectedControlVar,
         (mode == qMode::QLCMS)
             ? "; q_{LCMS} [GeV]; C(q_{LCMS}) = SS/OS"
             : "; q_{inv} [GeV]; C(q_{inv}) = SS/OS",
-        mode, plotXMin, plotXMax);
+        mode, plotXMin, plotXMax, plotYMin, plotYMax);
     
     // ===== Background Fit ===== //
     FitInit bgInit{{1.0, 0.1, 2.0, 0.1, 2.0}};
@@ -109,7 +107,9 @@ void doubleRatioFit(ControlVar selectedControlVar,
     // ===== Double Ratio ===== //
     TH1D* doubleRatio = histfuncRatio(singleRatio, bgFit, "dr_cor");
 
-    saveRatio(doubleRatio, "dr_cor", plotXMin, plotXMax, 
+    saveRatio(doubleRatio,
+        Form("dr_cor_%s_%s_%.0f-%.0f", qmodename, selectionVarName, bin_low, bin_high),
+        plotXMin, plotXMax, plotYMin, plotYMax,
         "dr_cor", "PbPb 2.76 TeV | Double Ratio",
         (mode == qMode::QLCMS)
             ? "; q_{LCMS} [GeV]; C(q_{LCMS}) = Data/Fit"
@@ -118,16 +118,16 @@ void doubleRatioFit(ControlVar selectedControlVar,
     );
 
     // ===== Final Fits ===== //
-    std::vector<std::pair<FitFunctionType, FitInit>> models = models1;
+    std::vector<std::pair<FitFunctionType, FitInit>> models2 = models;
     
     auto fits = fitHistogramMultiple(
         doubleRatio,
-        models,
+        models2,
         fitMin, fitMax
     );
     
     // ===== Draw & Save once ===== //
-    drawAndSaveFits(
+    saveFits(
         doubleRatio,
         fits,
         "c_double_ratio_fits",
@@ -136,12 +136,12 @@ void doubleRatioFit(ControlVar selectedControlVar,
         (mode == qMode::QLCMS)
             ? "; q_{LCMS} [GeV]; C(q_{LCMS}) = Data/Fit"
             : "; q_{inv} [GeV]; C(q_{inv}) = Data/Fit",
-        mode, plotXMin, plotXMax);
+        mode, plotXMin, plotXMax, plotYMin, plotYMax);
     
     // ===== Scan on Double Ratio =====
     const char* subtitleDR =  "Double Ratio";
     if (scanCfgDR) {
-        for (const auto& m : models) {
+        for (const auto& m : models2) {
             if (m.first == scanCfgDR->fitType) {
                 fitRangeScanHistogram(
                     doubleRatio,
@@ -154,7 +154,6 @@ void doubleRatioFit(ControlVar selectedControlVar,
         }
     }
     
-    AnalysisLog::instance().save("./logs", "ratiosAndFits");
 
     // Cleanup memory
     for (auto& f : fits)
