@@ -50,8 +50,8 @@ void doubleRatioFit(ControlVar selectedControlVar,
         plotXMin, plotXMax, plotYMin, plotYMax,
         "sr_cor", "PbPb 2.76 TeV | Single Ratio",
         (mode == qMode::QLCMS)
-            ? "; q_{LCMS} [GeV]; C(q_{LCMS}) = SS/OS"
-            : "; q_{inv} [GeV]; C(q_{inv}) = SS/OS",
+            ? "; q_{LCMS} [GeV]; C_{2}(q_{LCMS}) = SS/OS"
+            : "; q_{inv} [GeV]; C_{2}(q_{inv}) = SS/OS",
         "Single Ratio (SS/OS)"
     );
 
@@ -88,8 +88,8 @@ void doubleRatioFit(ControlVar selectedControlVar,
         Form("PbPb 2.76 TeV | Single Ratio | %s: %.0f-%.0f", selectionVarName, bin_low, bin_high),
         Form("fit_%s_%s_%.0f-%.0f", qmodename, selectionVarName, bin_low, bin_high),
         (mode == qMode::QLCMS)
-            ? "; q_{LCMS} [GeV]; C(q_{LCMS}) = SS/OS"
-            : "; q_{inv} [GeV]; C(q_{inv}) = SS/OS",
+            ? "; q_{LCMS} [GeV]; C_{2}(q_{LCMS}) = SS/OS"
+            : "; q_{inv} [GeV]; C_{2}(q_{inv}) = SS/OS",
         mode, plotXMin, plotXMax, plotYMin, plotYMax);
     
     // ===== Background Fit ===== //
@@ -112,8 +112,8 @@ void doubleRatioFit(ControlVar selectedControlVar,
         plotXMin, plotXMax, plotYMin, plotYMax,
         "dr_cor", "PbPb 2.76 TeV | Double Ratio",
         (mode == qMode::QLCMS)
-            ? "; q_{LCMS} [GeV]; C(q_{LCMS}) = Data/Fit"
-            : "; q_{inv} [GeV]; C(q_{inv}) = Data/Fit",
+            ? "; q_{LCMS} [GeV]; C_{2}(q_{LCMS}) = Data/Fit"
+            : "; q_{inv} [GeV]; C_{2}(q_{inv}) = Data/Fit",
         "Double Ratio (Data/Fit)"
     );
 
@@ -134,8 +134,8 @@ void doubleRatioFit(ControlVar selectedControlVar,
         Form("PbPb 2.76 TeV | Double Ratio | %s: %.0f-%.0f", selectionVarName, bin_low, bin_high),
         Form("fit_%s_%s_%.0f-%.0f", qmodename, selectionVarName, bin_low, bin_high),
         (mode == qMode::QLCMS)
-            ? "; q_{LCMS} [GeV]; C(q_{LCMS}) = Data/Fit"
-            : "; q_{inv} [GeV]; C(q_{inv}) = Data/Fit",
+            ? "; q_{LCMS} [GeV]; C_{2}(q_{LCMS}) = Data/Fit"
+            : "; q_{inv} [GeV]; C_{2}(q_{inv}) = Data/Fit",
         mode, plotXMin, plotXMax, plotYMin, plotYMax);
     
     // ===== Scan on Double Ratio =====

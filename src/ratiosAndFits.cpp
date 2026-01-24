@@ -29,7 +29,7 @@ int main() {
     double plotYMin = 0.9;
     double plotYMax = 2.1;
     
-    double fitMin = 0.0;
+    double fitMin = 0.04;
     double fitMax = 0.25;
     double fitMinBg = 0.2;
 
