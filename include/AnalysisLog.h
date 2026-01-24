@@ -1,4 +1,4 @@
-// AnalysisLog.h
+
 #pragma once
 
 #include <string>
@@ -23,8 +23,6 @@ struct LogEntry {
     std::string filename;
     std::time_t timestamp;
 };
-
-// AnalysisLog.h (continued)
 
 class AnalysisLog {
 public:

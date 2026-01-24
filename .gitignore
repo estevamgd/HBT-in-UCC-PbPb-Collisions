@@ -1,10 +1,9 @@
 
 /imgs
 HiForestAOD_UPC.root
-/src/imgs
-/src/logs
-/src/data/HiForestAOD_UPC.root
+/build/imgs
+/build/logs
+/build/data
+/build/benchmarks
 /tests/tasks.txt
-/src/data
 /tests
-/src/benchmarks
