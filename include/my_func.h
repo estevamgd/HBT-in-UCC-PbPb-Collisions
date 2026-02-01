@@ -78,6 +78,26 @@ static const Int_t lineStyles[4] = {
     4  // dash-dotted
 };
 
+struct EventData {
+    std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> tracks;
+    std::vector<Int_t> charges;
+};
+
+void printProgressBar(Long64_t current, Long64_t total, int width = 50) {
+    if (total <= 0) return;
+    double progress = (double)current / total;
+    int pos = width * progress;
+
+    std::cout << "\r[" ;
+    for (int i = 0; i < width; ++i) {
+        if (i < pos) std::cout << "=";
+        else if (i == pos) std::cout << ">";
+        else std::cout << " ";
+    }
+    std::cout << "] " << int(progress * 100.0) << "% (" << current << "/" << total << ")" << std::flush;
+    if (current == total) std::cout << std::endl;
+}
+
 TString findFile(const TString& pattern, const TString& version_tag = "") {
     TString command;
     if (version_tag.IsNull() || version_tag.IsWhitespace()) {
@@ -120,6 +140,45 @@ TH1D* getHistogram(TString fileSearchPattern, const char* histName) {
     }
 
     TH1D* histClone = dynamic_cast<TH1D*>(
+        hist->Clone(Form("%s_clone", histName))
+    );
+
+    histClone->SetDirectory(nullptr);
+    
+    file->Close();
+    delete file;
+
+    return histClone;
+}
+
+TH2D* getHistogram2d(TString fileSearchPattern, const char* histName) {
+    TString dataFile = findFile(fileSearchPattern);
+
+    if (dataFile.IsNull()) {
+        std::cerr << "Error: No data file found matching pattern: "
+                  << fileSearchPattern << std::endl;
+        return nullptr;
+    }
+
+    std::cout << "Found data file: " << dataFile << std::endl;
+
+    TFile* file = TFile::Open(dataFile, "READ");
+    if (!file || file->IsZombie()) {
+        std::cerr << "Error: Could not open file: " << dataFile << std::endl;
+        return nullptr;
+    }
+    AnalysisLog::instance().addInputFile(dataFile.Data());
+
+    TH2D* hist = dynamic_cast<TH2D*>(file->Get(histName));
+    if (!hist) {
+        std::cerr << "Error: Histogram '" << histName
+                  << "' not found in file." << std::endl;
+        file->Close();
+        delete file;
+        return nullptr;
+    }
+
+    TH2D* histClone = dynamic_cast<TH2D*>(
         hist->Clone(Form("%s_clone", histName))
     );
 
@@ -314,7 +373,7 @@ void save_histograms(TH1D *histograms[], int numHistograms, const char *path, co
                 path,
                 root_name
         );
-
+        
         for (int i = 0; i < numHistograms; i++) {
             histograms[i]->Write();
         }
@@ -322,7 +381,7 @@ void save_histograms(TH1D *histograms[], int numHistograms, const char *path, co
     
 }
 
-void save_histograms(TH2D *histograms[], int numHistograms, const char *path, const char *prefix,
+void save_histograms2d(TH2D *histograms[], int numHistograms, const char *path, const char *prefix,
                     int centmult_min, int centmult_max) {
     // Cria diretório se necessário
     std::filesystem::create_directories(path);

@@ -100,7 +100,7 @@ int main() {
     // to run use:
     // ./qinvqlcmsPlot
 
-    qinvqlcmsPlot(0.0, 0.3, 0.9, 2.1);
+    qinvqlcmsPlot(0.0, 0.1, 0.9, 2.1);
 
     return 0;
 }

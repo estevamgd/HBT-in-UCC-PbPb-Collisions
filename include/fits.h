@@ -37,54 +37,52 @@ FitModelConfig getFitModelConfig(FitFunctionType type)
 
     case FitFunctionType::EXPONENTIAL:
         return {
-            "fitExp", "Exponential Fit", FitExp, 4,
-            {"Const","#lambda","R (fm)","#epsilon"},
-            {{0.,0.},{0.,1.},{0.,0.},{0.,0.}},
-            {{1, "#lambda", ""},{2, "R", " fm"}}
+            "fitExpKC","Exponential Fit (Coulomb)",FitExpKC,5,
+            {"#lambda","R (fm)","dummy","#epsilon","Norm"},
+            {{0.,1.},{2.,12.},{0.,0.},{0.,0.},{0.,0.}},
+            {{0,"#lambda",""},{1,"R"," fm"}}
         };
 
     case FitFunctionType::GAUSSIAN:
         return {
-            "fitGauss", "Gaussian Fit", FitGauss, 4,
-            {"Const","#lambda","R (fm)","#epsilon"},
-            {{0.,0.},{0.,1.},{0.,0.},{0.,0.}},
-            {{1, "#lambda", ""},{2, "R", " fm"}}
+            "fitGaussKC","Gaussian Fit (Coulomb)",FitGaussKC,5,
+            {"#lambda","R (fm)","dummy","#epsilon","Norm"},
+            {{0.,1.},{2.,12.},{0.,0.},{0.,0.},{0.,0.}},
+            {{0,"#lambda",""},{1,"R"," fm"}}
         };
 
     case FitFunctionType::LEVY:
         return {
-            "fitLevy", "Levy Fit", FitLevy, 5,
+            "fitLevy","Levy Fit",FitLevy,5,
             {"Const","#lambda","R (fm)","#epsilon","#alpha"},
             {{0.,0.},{0.,1.},{0.,0.},{0.,0.},{1.,2.}},
-            {{1, "#lambda", ""},{2, "R", " fm"},{4, "#alpha", ""}}
+            {{1,"#lambda",""},{2,"R"," fm"},{4,"#alpha",""}}
         };
 
     case FitFunctionType::LEVY2:
         return {
-            "fitLevy2", "Levy2 Fit", FitLevy2, 3,
+            "fitLevy2","Levy2 Fit",FitLevy2,3,
             {"#lambda","R (fm)","#alpha"},
             {{0.,1.},{0.,0.},{1.,2.}},
-            {{0, "#lambda", ""},{1, "R", " fm"},{2, "#alpha", ""}}
+            {{0,"#lambda",""},{1,"R"," fm"},{2,"#alpha",""}}
         };
 
     case FitFunctionType::DOUBLE_LEVY:
         return {
-            "fitLevyDR", "Double Ratio Levy Fit", FitLevyDR, 5,
+            "fitLevyDR","Double Ratio Levy Fit",FitLevyDR,5,
             {"#lambda","R","#alpha","#epsilon","Norm"},
-            {{0.,1.},{0.,0.},{1.,2.},{0.,0.},{0.,0.}},
-            {{0, "#lambda", ""},{1, "R", " fm"},{2, "#alpha", ""}}
+            {{0.,1.},{2.,12.},{0.8,2.},{0.,0.},{0.,0.}},
+            {{0,"#lambda",""},{1,"R"," fm"},{2,"#alpha",""}}
         };
-    
+
     case FitFunctionType::BACKGROUND:
         return {
-            "fitBG", "Background Fit", FitBG, 5,
+            "fitBG","Background Fit",FitBG,5,
             {"Norm","#alpha_{1}","R_{1}","#alpha_{2}","R_{2}"},
             {{0.,0.},{0.,0.},{0.,0.},{0.,0.},{0.,0.}},
             {}
         };
     }
-
-    
 
     throw std::runtime_error("Unknown FitFunctionType");
 }
@@ -240,5 +238,6 @@ void saveFits(
     delete leg;
     delete c;
 }
+
 
 #endif

@@ -18,9 +18,9 @@ using namespace std;
 
 enum class FitFunctionType { EXPONENTIAL = 0, GAUSSIAN = 1, LEVY = 2, LEVY2 = 3, BACKGROUND = 4, DOUBLE_LEVY = 5 };
 
-// to reject a range in the fit -- in principle did not reject any range
-Double_t reject_range_min = 0.01;
-Double_t reject_range_max = 0.00001;
+// to reject a range in the fit
+Double_t reject_range_min = -100000.0;
+Double_t reject_range_max = 0.02;
 
 // Foward declaration to avoid bugs
 Double_t KGamow  (Double_t *x, Double_t *par);
@@ -75,6 +75,18 @@ Double_t FitExp(Double_t* x, Double_t* par){
     return v;
 }
 
+// Exponential + Coulomb (Bowler–Sinyukov)
+Double_t FitExpKC(Double_t* x, Double_t* par){
+    Double_t v = 0;
+    if(reject_range_min < x[0] && x[0] < reject_range_max){
+        TF1::RejectPoint();
+    } else {
+        Double_t parCor[2] = {1., par[1]};
+        v = par[4]*(1. - par[0] + par[0]*(1. + exp(-par[1]*x[0]/HBARC))*KCoulomb(x, par))*(1. + par[3]*x[0]);
+    }
+    return v;
+}
+
 // Gaussian function + long range from: https://github.com/i5albg/hbt_analysis/blob/main/final_HBT.C#L44-L67
 Double_t FitGauss(Double_t* x, Double_t* par){
     Double_t v = 0;
@@ -82,6 +94,18 @@ Double_t FitGauss(Double_t* x, Double_t* par){
     else{v= par[0]*(1 + par[1]*exp(-pow(par[2]*x[0]/HBARC,2.)))*(1+par[3]*x[0]);}
     return v;
 } 
+
+// Gaussian + Coulomb (Bowler–Sinyukov)
+Double_t FitGaussKC(Double_t* x, Double_t* par){
+    Double_t v = 0;
+    if(reject_range_min < x[0] && x[0] < reject_range_max){
+        TF1::RejectPoint();
+    } else {
+        Double_t parCor[2] = {2., par[1]};
+        v = par[4]*(1. - par[0]+ par[0]*(1. + exp(-pow(par[1]*x[0]/HBARC, 2.)))*KCoulomb(x, parCor))*(1. + par[3]*x[0]);
+    }
+    return v;
+}
 
 // Levy function  from: https://github.com/i5albg/hbt_analysis/blob/main/final_HBT.C#L44-L67
 Double_t FitLevy(Double_t* x, Double_t* par){
@@ -114,11 +138,14 @@ Double_t FitBG(Double_t* x, Double_t* par){
 // Double Ratio function 
 Double_t FitLevyDR(Double_t* x, Double_t* par){
     Double_t v = 0;
-    if(reject_range_min<x[0] && x[0]<reject_range_max){TF1::RejectPoint();}
-    else{v= par[4]*(1 - par[0] + par[0]*(1 + exp(-pow(par[1]*x[0]/HBARC,par[2])))*KCoulomb(x, par))*(1+par[3]*x[0]);}
+    if(reject_range_min<x[0] && x[0]<reject_range_max){
+        TF1::RejectPoint();
+    } else {
+        Double_t parCor[2] = {par[2], par[1]};
+        v= par[4]*(1. - par[0] + par[0]*(1. + exp(-pow(par[1]*x[0]/HBARC,par[2])))*KCoulomb(x, par))*(1. + par[3]*x[0]);
+    }
     return v;
 }
-
 
 // Coulomb Correction
 Double_t KCoulomb(Double_t *x, Double_t *par){
@@ -128,18 +155,18 @@ Double_t KCoulomb(Double_t *x, Double_t *par){
     cD = 0.000001, cE = 0.000003, cF = 1.68883, dA = 0.00057, dB = -0.80527, 
     dC = -0.19261, dD = 2.77504, dE = 2.02951, dF = 1.07906;
 
-    Double_t A = pow((aA * par[1] + aB),2) + pow((aC * par[1] + aD),2) + aE * pow((par[1] * par[0] + 1),2);
-    Double_t B = (1. + bA*pow(par[0],bB) -pow(par[1],bC)) / (par[1]*par[1]*par[0]*(pow(par[1],bD)+bE*pow(par[0],bF)));
-    Double_t C = ((cA  + pow(par[1],cB) + cC*pow(par[0],cD))/cE)*(pow(par[1]/par[0],cF));
-    Double_t D = (dA + (pow(par[0],dB) + dC*pow(par[1],dF))/(pow(par[0],dD)*pow(par[1],dE)));
+    Double_t A = pow((aA * par[0] + aB),2) + pow((aC * par[1] + aD),2) + aE * pow((par[1] * par[0] + 1),2);
+    Double_t B = (1. + bA*pow(par[1],bB) -pow(par[0],bC)) / (par[0]*par[0]*par[1]*(pow(par[0],bD)+bE*pow(par[1],bF)));
+    Double_t C = ((cA  + pow(par[0],cB) + cC*pow(par[1],cD))/cE)*(pow(par[0]/par[1],cF));
+    Double_t D = (dA + (pow(par[1],dB) + dC*pow(par[0],dF))/(pow(par[1],dD)*pow(par[0],dE)));
     Double_t par2[6] = {par[0], par[1], A, B, C, D};
 
     Double_t Aa = 0.126253, Ab = 0.05385, Ac = -0.00913, Ad = -0.01846,
     Ae = 0.00085, Af = 0.00042, Ba = 19.31620, Bb = 5.58961, Bc = 2.26264, 
     Bd = -1.28486, Be = -0.08216, Bf = 0.02384;
 
-    Double_t A2 = Aa + Ab*par[1] + Ac*par[0] + Ad*par[1]*par[0] + Ae*par[0]*par[0] + Af*par[1]*par[1]*par[0]*par[0];
-    Double_t B2 = Ba + Bb*par[1] + Bc*par[0] + Bd*par[1]*par[0] + Be*par[0]*par[0] + Bf*par[1]*par[1]*par[0]*par[0];
+    Double_t A2 = Aa + Ab*par[0] + Ac*par[1] + Ad*par[1]*par[0] + Ae*par[1]*par[1] + Af*par[1]*par[1]*par[0]*par[0];
+    Double_t B2 = Ba + Bb*par[0] + Bc*par[1] + Bd*par[1]*par[0] + Be*par[1]*par[1] + Bf*par[1]*par[1]*par[0]*par[0];
 
     Double_t q0 = 0.07;
     Double_t n = 20.0;
@@ -154,7 +181,7 @@ Double_t KCoulomb(Double_t *x, Double_t *par){
 
 // Modified Coulomb Correction
 Double_t KMod(Double_t *x, Double_t *par2){  // Direct implementation from paper
-    return 1. + (par2[2]*((PREFACTOR*par2[0])/(par2[1])))/(1. + par2[3]*x[0]*par2[0]/(par2[1]*HBARC) + par2[4]*pow(x[0]*par2[0]/(par2[1]*HBARC),2) + par2[5]*pow(x[0]*par2[0]/(par2[1]*HBARC),4));
+    return 1. + (par2[2]*((PREFACTOR*par2[1])/(par2[0])))/(1. + par2[3]*x[0]*par2[1]/(par2[0]*HBARC) + par2[4]*pow(x[0]*par2[1]/(par2[0]*HBARC),2) + par2[5]*pow(x[0]*par2[1]/(par2[0]*HBARC),4));
 }
 
 //  Gamow Factor from: https://github.com/csanadm/coulcorrlevyparam/blob/0c3d63e765762ec06d0eb66e42b95b8561e6a669/coulcorr_param.cc#L84-L88
