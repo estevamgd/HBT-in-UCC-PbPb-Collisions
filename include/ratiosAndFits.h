@@ -378,6 +378,7 @@ void DeltaPhiDeltaEtaRatio(ControlVar selectedControlVar,
                     double bin_low, double bin_high,
                     double plotXMin, double plotXMax, 
                     double plotYMin, double plotYMax,
+                    double plotZMin, double plotZMax,
                     Double_t etaCut,
                     const char* fileName = nullptr)
 {   
@@ -409,7 +410,7 @@ void DeltaPhiDeltaEtaRatio(ControlVar selectedControlVar,
 
     saveRatio(singleRatio, 
         Form("sr_DeltaEtaDeltaPhi_%s_%.0f-%.0f", selectionVarName, bin_low, bin_high),
-        plotXMin, plotXMax, plotYMin, plotYMax, 
+        plotXMin, plotXMax, plotYMin, plotYMax, plotZMin, plotZMax,
         "sr_DeltaEtaDeltaPhi", "PbPb 2.76 TeV | Single Ratio",
         "; #Delta#eta; #Delta#varphi; C(#Delta#eta, #Delta#varphi) = Sig/Mix",
         "Single Ratio (Sig/Mix)"

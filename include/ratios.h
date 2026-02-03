@@ -73,12 +73,13 @@ void saveRatio(TH2D* hRatio,
                     const char* outputPrefix,
                     double plotXMin = 0.0, double plotXMax = 10.0,
                     double plotYMin = 0.9, double plotYMax = 2.1,
+                    double plotZMin = 0.6, double plotZMax = 1.4,
                     const char* outputHistName = "sr_cor",
                     const char* plotHeaderText = "PbPb 2.76 TeV | Single Ratio",
                     const char* histTittle = "; q_{inv} [GeV]; C(q_{inv}) = SS/OS",
                     const char* legend = "Single Ratio (SS/OS)") {
     TH2D* hRatioClone = (TH2D*)(hRatio->Clone("hRatioClone"));
-
+    gStyle->SetPalette(kRainBow);
     gStyle->SetOptStat(0);     
     hRatioClone->SetTitle(histTittle);
     hRatioClone->SetMarkerStyle(20);
@@ -87,6 +88,7 @@ void saveRatio(TH2D* hRatio,
     hRatioClone->SetLineColor(kBlack);
     hRatioClone->GetXaxis()->SetRangeUser(plotXMin, plotXMax);
     hRatioClone->GetYaxis()->SetRangeUser(plotYMin, plotYMax);
+    hRatioClone->GetZaxis()->SetRangeUser(plotZMin, plotZMax);
     std::cout << "Ratio histogram '" << outputHistName << "' created successfully." << std::endl;
 
     TCanvas *cRatio = new TCanvas("cRatio", "Ratio", 1200, 800);

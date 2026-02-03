@@ -80,6 +80,7 @@ static const Int_t lineStyles[4] = {
 
 struct EventData {
     std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> tracks;
+    std::vector<Float_t> weights;
     std::vector<Int_t> charges;
 };
 

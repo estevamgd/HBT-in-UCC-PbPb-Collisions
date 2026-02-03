@@ -1,2191 +1,891 @@
 #include <iostream>
 #include <vector>
-#include <chrono>
 #include <cmath>
+#include <chrono>
 #include <thread>
 #include <string>
-#include <TFile.h>
-#include <TSystem.h>
-#include <TTree.h>
-#include <TH1D.h>
-#include <TMath.h>
-#include <TCanvas.h>
-#include <TLegend.h>
-#include <TStyle.h>
-#include "Math/LorentzVector.h"
-#include "Math/PtEtaPhiM4D.h"
-#include "ROOT/RConfig.hxx"
-#include "../include/data_func.h"
-#include "../include/process_func.h"
+#include <memory>
+#include <algorithm>
 
+// ----- Struct for Input Configuration -----
+struct InputParams {
+    std::string fileInput;
+    std::string treeInput;
+};
 
-void sig_qinv_double_loop(
-    const char *fileInput, 
-    const char *treeInput, 
-    double selVarMoreeq, 
-    double selVarLess, 
-    ControlVar selectionVarType = ControlVar::CENT, 
-    int test_limit_sig = -1,
-    int test_limit_mix = -1,
-    Float_t vertexDistance = 2, 
-    Int_t pairChargeMult = 1, 
-    int poolSizeInt = 10) 
-{
-    // Load the ROOT file and tree
-    TFile *fr = nullptr;
-    TTree *t = nullptr;
-    getFileTree(fileInput, treeInput, fr, t);
+// ----- Struct for Analysis Parameters and Toggles -----
+struct AnalysisParams {
+    // Event Selection
+    double selVarMoreeq = 0.0;
+    double selVarLess = 100.0;
+    ControlVar selectionVarType = ControlVar::CENT;
 
-    // Variables from the tree
-    Int_t maxSize = 50000, Ntrk, hiBin, trkCharge[maxSize]; 
-    Float_t HFsumET, pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
-            pionMass = 0.13957039; // Pion mass [GeV] from PDG
+    // Processing Limits (Toggles)
+    bool useTestLimitSig = false;
+    int testLimitSig = -1;
+    bool useTestLimitMix = false;
+    int testLimitMix = -1;
+
+    // Track Filters (Toggles + Values)
+    bool usePtMin = true;
+    float ptMin = 0.5; 
+    bool usePtMax = false;
+    float ptMax = 5.0;
+    bool useEtaCut = true;
+    float etaCut = 0.95;
+    bool usePixHit = true;
+    float pixHit = 1.0;
     
-    double* selectionVar, displaySelVarMoreeq, displaySelVarLess;
-    double hiBinProxy, NtrkProxy, HFsumETProxy;
-    
-    t->SetBranchAddress("HFsumET", &HFsumET);
-    t->SetBranchAddress("Ntrk", &Ntrk);
-    t->SetBranchAddress("hiBin", &hiBin);
-    t->SetBranchAddress("pvZ", &pvZ); // Z in cm; Use fabs(pvZ) for absolute value of the vertex position in z axis
-    t->SetBranchAddress("trkCharge", trkCharge);
-    t->SetBranchAddress("trkWeight", trkWeight);
-    t->SetBranchAddress("trkPt", trkPt);
-    t->SetBranchAddress("trkEta", trkEta);
-    t->SetBranchAddress("trkPhi", trkPhi);
+    // Vertex and Mixing Config
+    float vertexDistance = 15.0; 
+    int poolSizeInt = 10;
+    float zBinWidth = 2.0;
+};
 
-    const char * selectionVarName;
+// ----- Process Class for Analysis Management -----
+class Process {
+private:
+    InputParams inputs;
+    AnalysisParams cfg;
 
-    if (selectionVarType == ControlVar::CENT){
-        selectionVar = &hiBinProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selVarMoreeq = selVarMoreeq*2;
-        selVarLess = selVarLess*2;
-        selectionVarName = "CENT";
-    } else if (selectionVarType == ControlVar::MULT){
-        selectionVar = &NtrkProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "MULT";
-    } else if (selectionVarType == ControlVar::CENTHF){
-        selectionVar = &HFsumETProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "CENTHF";
-    } else {
-        std::cerr << "Invalid selection variable type!" << std::endl;
-        return;
+    // --- Helper Math Functions (Inline) ---
+    double GetQ(const ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>& p1, 
+                const ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>& p2) {
+        auto q = p1 - p2;
+        return std::sqrt(std::abs(q.M2())); // Approx for identical particles
     }
 
-    // Getting how many entries
-    Long64_t nentries = t->GetEntries(), trackvec_max_size = 0;
-    std::cout << "#Events: " << nentries << std::endl;
-    
-    // See how many processed events
-    int processedEventsSig = 0;
-    int processedEventsMix = 0;
+    double GetQLCMS(const ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>& p1, 
+                    const ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>& p2) {
+        auto K = 0.5 * (p1 + p2);
+        ROOT::Math::BoostZ boost(-K.Pz() / K.E());
+        auto p1_lcms = boost(p1);
+        auto p2_lcms = boost(p2);
+        auto q = p1_lcms - p2_lcms;
+        return std::sqrt(q.Px()*q.Px() + q.Py()*q.Py() + q.Pz()*q.Pz()); // 3-momentum diff in LCMS
+    }
 
-    // === HISTOGRAMA ===
-    double ninterval = 1., nlength = 0.02, nscale = 1./1.;
-    //double nnscale = numBins(ninterval, nlength, nscale), x0 = 0., xt=10.;
-    double nnscale = 10000, x0 = 0., xt=10.;
+    // =================================================================================
+    // Internal Process Functions (Optimized Thread-Local Histograms, SS Only)
+    // =================================================================================
 
-    TH1D* h_qinvSS_signal_2l = new TH1D("h_qinvSS_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qinvSSCor_signal_2l = new TH1D("h_qinvSSCor_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qinvOS_signal_2l = new TH1D("h_qinvOS_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qinvOSCor_signal_2l = new TH1D("h_qinvOSCor_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qinv_mix_2l = new TH1D("h_qinv_mix_2l", "", nnscale, x0, xt);
-    TH1D* h_qinvCor_mix_2l = new TH1D("h_qinvCor_mix_2l", "", nnscale, x0, xt);
-        
-    h_qinvSSCor_signal_2l->Sumw2();
-    h_qinvOSCor_signal_2l->Sumw2();
-    h_qinvCor_mix_2l->Sumw2();
-    
-    h_qinvSS_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvSS_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinvOS_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvOS_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinvSSCor_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvSSCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinvOSCor_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvOSCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinv_mix_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinv_mix_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinvCor_mix_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvCor_mix_2l->GetYaxis()->SetTitle("#Pairs");
+    // --- DeltaEta-DeltaPhi Processes ---
+    void processSignalDeltaEtaDeltaPhi(int thread_count, const EventData& currentEv, TH2D* hSigSS) {
+        size_t n_tracks = currentEv.tracks.size();
+        if (n_tracks <= 1) return;
+        if (thread_count == 0) thread_count = 1;
 
-    double duration_full = 0.0, duration_mix = 0.0, duration_signal = 0.0;
+        struct LocalHistograms {
+            TH2D* h;
+            LocalHistograms(const TH2D* base) {
+                h = (TH2D*)base->Clone(TString::Format("%s_clone_%p", base->GetName(), this));
+                h->Reset();
+            }
+            ~LocalHistograms() { delete h; }
+        };
 
-    std::vector<std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>> vectorEventTracks4V;
-    std::vector<std::vector<Int_t>> vectorEventTracksCharge;
-    std::vector<std::vector<Float_t>> vectorEventTracksWeight;
+        std::vector<std::thread> threads;
+        std::vector<std::unique_ptr<LocalHistograms>> local_hists;
+        for (int i = 0; i < thread_count; ++i) local_hists.push_back(std::make_unique<LocalHistograms>(hSigSS));
 
-    size_t poolSize = static_cast<size_t>(poolSizeInt);
+        auto thread_task = [&](size_t start, size_t end, LocalHistograms* lh) {
+            for (size_t p1 = start; p1 < end; p1++) {
+                for (size_t p2 = p1 + 1; p2 < n_tracks; p2++) {
+                    if (currentEv.charges[p1] * currentEv.charges[p2] > 0) { // SS Only
+                        const double dEta = std::abs(currentEv.tracks[p1].Eta() - currentEv.tracks[p2].Eta());
+                        const double dPhi = std::abs(TVector2::Phi_mpi_pi(currentEv.tracks[p1].Phi() - currentEv.tracks[p2].Phi()));
+                        if (dEta < 0.1 && dPhi < 0.1) {
+                            lh->h->Fill(dEta, dPhi, currentEv.weights[p1] * currentEv.weights[p2]);
+                        }
+                    }
+                }
+            }
+        };
 
-    auto start_full = std::chrono::high_resolution_clock::now();
-    for (Long64_t i = 0; i < nentries; i++){
-        t->GetEntry(i);
-        
-        hiBinProxy = hiBin;
-        NtrkProxy = Ntrk;
-        HFsumETProxy = HFsumET;
-        
-        if (processedEventsSig == test_limit_sig) break;
-        if (processedEventsMix == test_limit_mix) break;
-        if (!(selVarMoreeq <= *selectionVar && *selectionVar < selVarLess)) continue;
-        processedEventsSig++;
-        
-        std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> currentEventTracks4V;
-        std::vector<Int_t> currentEventTracksCharge;
-        std::vector<Float_t> currentEventTracksWeight;
-
-        for (int j = 0; j < Ntrk; j++) {
-            ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> currentTrack4V(trkPt[j], trkEta[j], trkPhi[j], pionMass);
-            currentEventTracks4V.push_back(currentTrack4V);
-            currentEventTracksCharge.push_back(trkCharge[j]);
-            currentEventTracksWeight.push_back(trkWeight[j]);
+        size_t chunk = n_tracks / thread_count;
+        for (int t = 0; t < thread_count; t++) {
+            size_t start = t * chunk;
+            size_t end = (t == thread_count - 1) ? n_tracks : (t + 1) * chunk;
+            threads.emplace_back(thread_task, start, end, local_hists[t].get());
         }
-        
-        auto start_mix_lap = std::chrono::high_resolution_clock::now();
-        // === MIXING === 
-        size_t size_before = vectorEventTracks4V.size();
-        if (pvZ < vertexDistance) {
-            if (!currentEventTracks4V.empty()) {
-                if (vectorEventTracks4V.size() < poolSize && !vectorEventTracks4V.empty()) { 
-                    for (size_t nEv = 0; nEv < vectorEventTracks4V.size(); nEv++) {
-                        for (size_t p1 = 0; p1 < vectorEventTracks4V[nEv].size(); p1++) {
-                            for (size_t p2 = 0; p2 < currentEventTracks4V.size(); p2++) {
-                                if (!(vectorEventTracksCharge[nEv][p1]*trkCharge[p2] == pairChargeMult)) continue;
-                                if (std::isinf(vectorEventTracksWeight[nEv][p1]*trkWeight[p2])) continue;
-                                
-                                double qinv = GetQ(vectorEventTracks4V[nEv][p1], currentEventTracks4V[p2]);
-                                h_qinv_mix_2l->Fill(qinv);
-                                h_qinvCor_mix_2l->Fill(qinv, vectorEventTracksWeight[nEv][p1]*trkWeight[p2]);
+        for (auto& t : threads) t.join();
+        for (auto& lh : local_hists) hSigSS->Add(lh->h);
+    }
+
+    void processMixDeltaEtaDeltaPhi(int thread_count, const EventData& currentEv, const std::vector<EventData>& pool, TH2D* hMixSS) {
+        if (currentEv.tracks.empty() || pool.empty()) return;
+        if (thread_count == 0) thread_count = 1;
+
+        struct LocalHistograms {
+            TH2D* h;
+            LocalHistograms(const TH2D* base) {
+                h = (TH2D*)base->Clone(TString::Format("%s_clone_%p", base->GetName(), this));
+                h->Reset();
+            }
+            ~LocalHistograms() { delete h; }
+        };
+
+        std::vector<std::thread> threads;
+        std::vector<std::unique_ptr<LocalHistograms>> local_hists;
+        for (int i = 0; i < thread_count; ++i) local_hists.push_back(std::make_unique<LocalHistograms>(hMixSS));
+
+        auto thread_task = [&](size_t start, size_t end, LocalHistograms* lh) {
+            for (size_t p1 = start; p1 < end; ++p1) {
+                for (const auto& pastEv : pool) {
+                    for (size_t p2 = 0; p2 < pastEv.tracks.size(); ++p2) {
+                        if (currentEv.charges[p1] * pastEv.charges[p2] > 0) { // SS Only
+                            const double dEta = std::abs(currentEv.tracks[p1].Eta() - pastEv.tracks[p2].Eta());
+                            const double dPhi = std::abs(TVector2::Phi_mpi_pi(currentEv.tracks[p1].Phi() - pastEv.tracks[p2].Phi()));
+                            if (dEta < 0.1 && dPhi < 0.1) {
+                                lh->h->Fill(dEta, dPhi, currentEv.weights[p1] * pastEv.weights[p2]);
                             }
                         }
                     }
                 }
-                vectorEventTracks4V.push_back(currentEventTracks4V);
-                vectorEventTracksCharge.push_back(currentEventTracksCharge);
-                vectorEventTracksWeight.push_back(currentEventTracksWeight);
-                
-                if (vectorEventTracks4V.size() >= poolSize) {
-                    vectorEventTracks4V.clear();
-                    vectorEventTracksCharge.clear();
-                    vectorEventTracksWeight.clear();
+            }
+        };
+
+        size_t chunk = currentEv.tracks.size() / thread_count;
+        for (int t = 0; t < thread_count; t++) {
+            size_t start = t * chunk;
+            size_t end = (t == thread_count - 1) ? currentEv.tracks.size() : (t + 1) * chunk;
+            threads.emplace_back(thread_task, start, end, local_hists[t].get());
+        }
+        for (auto& t : threads) t.join();
+        for (auto& lh : local_hists) hMixSS->Add(lh->h);
+    }
+
+    // --- Qinv Processes ---
+    void processSignalQinv(int thread_count, const EventData& currentEv, TH1D* hSigSS) {
+        size_t n_tracks = currentEv.tracks.size();
+        if (n_tracks <= 1) return;
+        if (thread_count == 0) thread_count = 1;
+
+        struct LocalHistograms {
+            TH1D* h;
+            LocalHistograms(const TH1D* base) {
+                h = (TH1D*)base->Clone(TString::Format("%s_clone_%p", base->GetName(), this));
+                h->Reset();
+            }
+            ~LocalHistograms() { delete h; }
+        };
+
+        std::vector<std::thread> threads;
+        std::vector<std::unique_ptr<LocalHistograms>> local_hists;
+        for (int i = 0; i < thread_count; ++i) local_hists.push_back(std::make_unique<LocalHistograms>(hSigSS));
+
+        auto thread_task = [&](size_t start, size_t end, LocalHistograms* lh) {
+            for (size_t p1 = start; p1 < end; p1++) {
+                for (size_t p2 = p1 + 1; p2 < n_tracks; p2++) {
+                    if (currentEv.charges[p1] * currentEv.charges[p2] > 0) { // SS Only
+                        double q = GetQ(currentEv.tracks[p1], currentEv.tracks[p2]);
+                        lh->h->Fill(q, currentEv.weights[p1] * currentEv.weights[p2]);
+                    }
                 }
             }
+        };
+
+        size_t chunk = n_tracks / thread_count;
+        for (int t = 0; t < thread_count; t++) {
+            size_t start = t * chunk;
+            size_t end = (t == thread_count - 1) ? n_tracks : (t + 1) * chunk;
+            threads.emplace_back(thread_task, start, end, local_hists[t].get());
         }
-        size_t size_after = vectorEventTracks4V.size();
-        if (size_after == size_before+1) processedEventsMix++;
-        if (size_before == poolSize-1 && size_after == 0) processedEventsMix++;
-        
-        auto end_mix_lap = std::chrono::high_resolution_clock::now();
-        duration_mix += std::chrono::duration_cast<std::chrono::duration<double>>(end_mix_lap - start_mix_lap).count();
-        
-        auto start_signal_lap = std::chrono::high_resolution_clock::now();
-        if (currentEventTracks4V.size() <= 1) return; // check if event has 2 or more tracks 
+        for (auto& t : threads) t.join();
+        for (auto& lh : local_hists) hSigSS->Add(lh->h);
+    }
 
-        for (size_t p1 = 0; p1 < currentEventTracks4V.size(); p1++) {
-            for (size_t p2 = p1+1; p2 < currentEventTracks4V.size(); p2++) {
-                // Checks
-                if (std::isinf(trkWeight[p1] * trkWeight[p2])) continue; // Check if weight is infinity
+    void processMixQinv(int thread_count, const EventData& currentEv, const std::vector<EventData>& pool, TH1D* hMixSS) {
+        if (currentEv.tracks.empty() || pool.empty()) return;
+        if (thread_count == 0) thread_count = 1;
 
-                // Calculate q_inv
-                double qinv = GetQ(currentEventTracks4V[p1], currentEventTracks4V[p2]);
-
-                // Use a lock_guard to acquire the mutex. It will be automatically released.
-                if (trkCharge[p1] * trkCharge[p2] > 0) { // Fills same charge particle pair histogram
-                    h_qinvSS_signal_2l->Fill(qinv);
-                    h_qinvSSCor_signal_2l->Fill(qinv, trkWeight[p1] * trkWeight[p2]);
-                } else { // Fills opposite charge particle pair histogram
-                    h_qinvOS_signal_2l->Fill(qinv);
-                    h_qinvOSCor_signal_2l->Fill(qinv, trkWeight[p1] * trkWeight[p2]);
-                }
-
+        struct LocalHistograms {
+            TH1D* h;
+            LocalHistograms(const TH1D* base) {
+                h = (TH1D*)base->Clone(TString::Format("%s_clone_%p", base->GetName(), this));
+                h->Reset();
             }
-        }
-
-        auto end_signal_lap = std::chrono::high_resolution_clock::now();
-        duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
-    }
-        
-    auto end_full = std::chrono::high_resolution_clock::now();
-    duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
-
-    std::cout << "#Processed Events(Sig): " << processedEventsSig << std::endl;
-    std::cout << "#Processed Events(Mix): " << processedEventsMix << std::endl;
-    
-    TH1D *h_qinvDivCor_signal_2l = (TH1D *)h_qinvSSCor_signal_2l->Clone("h_qinvDivCor_signal_2l");
-    TH1D *h_qinvDiv_signal_2l = (TH1D *)h_qinvSS_signal_2l->Clone("h_qinvDiv_signal_2l");    
-
-    h_qinvDivCor_signal_2l->Divide(h_qinvOSCor_signal_2l);
-    h_qinvDiv_signal_2l->Divide(h_qinvOS_signal_2l);
-
-    h_qinvDiv_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvDiv_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinvDivCor_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvDivCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-
-    h_qinvDivCor_signal_2l->Sumw2();
-
-    // Save histograms
-    TCanvas *c_sig_SS = new TCanvas("c_sig_SS", "Signal Distributions", 1200, 800);
-    TCanvas *c_sig_OS = new TCanvas("c_sig_OS", "Signal Distributions", 1200, 800);
-    TCanvas *c_sig_cor_SS = new TCanvas("c_sig_cor_SS", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_sig_cor_OS = new TCanvas("c_sig_cor_OS", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_sig_cor_Div = new TCanvas("c_sig_cor_Div", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_sig_Div = new TCanvas("c_sig_Div", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_mix = new TCanvas("c_mix", "Mixing Distributions", 1200, 800);
-    TCanvas *c_mix_cor = new TCanvas("c_mix_cor", "Mixing Corrected Distributions", 1200, 800);
-    
-    TLegend *legend_sig_SS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_OS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_SS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_OS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_Div = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_Div = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_mix = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_mix_cor = new TLegend(0.7, 0.7, 0.9, 0.9);
-
-    legend_sig_SS->AddEntry(h_qinvSS_signal_2l, "Signal SS - One loop", "l");
-    legend_sig_OS->AddEntry(h_qinvOS_signal_2l, "Signal OS - One loop", "l");
-    legend_sig_cor_SS->AddEntry(h_qinvSSCor_signal_2l, "Signal SS Cor - One loop", "l");
-    legend_sig_cor_OS->AddEntry(h_qinvOSCor_signal_2l, "Signal OS Cor - One loop", "l");
-    legend_sig_cor_Div->AddEntry(h_qinvOSCor_signal_2l, "Signal Div Cor - One loop", "l");
-    legend_sig_Div->AddEntry(h_qinvOSCor_signal_2l, "Signal Div - One loop", "l");
-    legend_mix->AddEntry(h_qinv_mix_2l, "Mix - Double loop", "l");
-    legend_mix_cor->AddEntry(h_qinvCor_mix_2l, "Mix Cor - Double loop", "l");
-    
-    legend_sig_SS->SetFillStyle(0); legend_sig_SS->SetBorderSize(0);
-    legend_sig_OS->SetFillStyle(0); legend_sig_OS->SetBorderSize(0);
-    legend_sig_cor_SS->SetFillStyle(0); legend_sig_cor_SS->SetBorderSize(0);
-    legend_sig_cor_OS->SetFillStyle(0); legend_sig_cor_OS->SetBorderSize(0);
-    legend_sig_cor_Div->SetFillStyle(0); legend_sig_cor_Div->SetBorderSize(0);
-    legend_sig_Div->SetFillStyle(0); legend_sig_Div->SetBorderSize(0);
-    legend_mix->SetFillStyle(0); legend_mix->SetBorderSize(0);
-    legend_mix_cor->SetFillStyle(0); legend_mix_cor->SetBorderSize(0);
-
-    c_sig_SS->cd(); gStyle->SetOptStat(0); h_qinvSS_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_SS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal SS");
-    c_sig_OS->cd(); gStyle->SetOptStat(0); h_qinvOS_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_OS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal OS");
-    c_sig_cor_SS->cd(); gStyle->SetOptStat(0); h_qinvSSCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_SS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal SS Cor");
-    c_sig_cor_OS->cd(); gStyle->SetOptStat(0); h_qinvOSCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_OS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal OS Cor");
-    c_sig_cor_Div->cd(); gStyle->SetOptStat(0); h_qinvDivCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_Div->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal Div Cor");
-    c_sig_Div->cd(); gStyle->SetOptStat(0); h_qinvDiv_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_Div->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal Div");
-    c_mix->cd(); gStyle->SetOptStat(0); h_qinv_mix_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_mix->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Mixing");
-    c_mix_cor->cd(); gStyle->SetOptStat(0); h_qinvCor_mix_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_mix_cor->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Mixing Corrected");
-
-    TH1D *histograms[] = {h_qinvSS_signal_2l, h_qinvSSCor_signal_2l, h_qinvOS_signal_2l, h_qinvOSCor_signal_2l, h_qinvDivCor_signal_2l, h_qinvDiv_signal_2l, h_qinv_mix_2l, h_qinvCor_mix_2l};
-    Int_t numHistograms = 8;
-
-    TCanvas *canvases[] = {c_sig_SS, c_sig_OS, c_sig_cor_OS, c_sig_cor_SS, c_sig_cor_Div, c_sig_Div, c_mix, c_mix_cor};
-    int numCanvases = 8;
-
-    TLegend *legends[] = {legend_sig_SS, legend_sig_OS, legend_sig_cor_OS, legend_sig_cor_SS, legend_sig_cor_Div, legend_sig_Div, legend_mix, legend_mix_cor};
-    int numLegends = 8;
-
-    // Prefix
-    char prefix[100];
-    sprintf(prefix, "sig_qinv_double_loop_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
-
-    // Saving Benchmakrs
-    const char *spath = "benchmarks";
-    std::vector<double> durations = {duration_full, duration_signal, duration_mix};
-    std::vector<std::string> labels = {"Total Time", "Signal Time", "Mix Time"};
-    save_benchmark_chrono(durations, labels, spath, prefix, processedEventsSig, processedEventsMix);
-
-    // Saving histograms
-    const char *hpath = "./data/signal_mix/";
-    save_histograms(histograms, numHistograms, hpath, prefix, displaySelVarMoreeq, displaySelVarLess);
-
-    // Saving image
-    const char *ipath = "./imgs/test/signal_mix/";
-    const char *ifile_type = "png";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type);
-    const char *ifile_type2 = "pdf";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
-
-    AnalysisLog::instance().save("./logs", "makeSignalQinv");
-    
-    // Closing program
-    close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
-}
-
-void sig_qinv_double_loop_parallel(
-    const char *fileInput, 
-    const char *treeInput, 
-    double selVarMoreeq, 
-    double selVarLess, 
-    ControlVar selectionVarType = ControlVar::CENT, 
-    int test_limit_sig = -1,
-    int test_limit_mix = -1,
-    Float_t vertexDistance = 2, 
-    Int_t pairChargeMult = 1, 
-    int poolSizeInt = 10) 
-{
-    
-    // Load the ROOT file and tree
-    TFile *fr = nullptr;
-    TTree *t = nullptr;
-    getFileTree(fileInput, treeInput, fr, t);
-
-    // Variables from the tree
-    Int_t maxSize = 50000, Ntrk, hiBin, trkCharge[maxSize]; 
-    Float_t HFsumET, pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
-            pionMass = 0.13957039; // Pion mass [GeV] from PDG
-    
-    double* selectionVar, displaySelVarMoreeq, displaySelVarLess;
-    double hiBinProxy, NtrkProxy, HFsumETProxy;
-    int thread_count = std::thread::hardware_concurrency();
-
-    t->SetBranchAddress("HFsumET", &HFsumET);
-    t->SetBranchAddress("Ntrk", &Ntrk);
-    t->SetBranchAddress("hiBin", &hiBin);
-    t->SetBranchAddress("pvZ", &pvZ); 
-    t->SetBranchAddress("trkCharge", trkCharge);
-    t->SetBranchAddress("trkWeight", trkWeight);
-    t->SetBranchAddress("trkPt", trkPt);
-    t->SetBranchAddress("trkEta", trkEta);
-    t->SetBranchAddress("trkPhi", trkPhi);
-
-    const char * selectionVarName;
-
-    if (selectionVarType == ControlVar::CENT){
-        selectionVar = &hiBinProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selVarMoreeq = selVarMoreeq*2;
-        selVarLess = selVarLess*2;
-        selectionVarName = "CENT";
-    } else if (selectionVarType == ControlVar::MULT){
-        selectionVar = &NtrkProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "MULT";
-    } else if (selectionVarType == ControlVar::CENTHF){
-        selectionVar = &HFsumETProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "CENTHF";
-    } else {
-        std::cerr << "Invalid selection variable type!" << std::endl;
-        return;
-    }
-
-    // Getting how many entries
-    Long64_t nentries = t->GetEntries();
-    std::cout << "#Events: " << nentries << std::endl;
-    
-    int processedEventsSig = 0;
-    int processedEventsMix = 0;
-
-    // === HISTOGRAMS ===
-    double nnscale = 10000, x0 = 0., xt=10.;
-
-    TH1D* h_qinvSS_signal_2l = new TH1D("h_qinvSS_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qinvSSCor_signal_2l = new TH1D("h_qinvSSCor_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qinvOS_signal_2l = new TH1D("h_qinvOS_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qinvOSCor_signal_2l = new TH1D("h_qinvOSCor_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qinv_mix_2l = new TH1D("h_qinv_mix_2l", "", nnscale, x0, xt);
-    TH1D* h_qinvCor_mix_2l = new TH1D("h_qinvCor_mix_2l", "", nnscale, x0, xt);
-        
-    h_qinvSSCor_signal_2l->Sumw2();
-    h_qinvOSCor_signal_2l->Sumw2();
-    h_qinvCor_mix_2l->Sumw2();
-    
-    h_qinvSS_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvSS_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinvOS_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvOS_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinvSSCor_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvSSCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinvOSCor_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvOSCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinv_mix_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinv_mix_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinvCor_mix_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvCor_mix_2l->GetYaxis()->SetTitle("#Pairs");
-
-    double duration_full = 0.0, duration_mix = 0.0, duration_signal = 0.0;
-
-    std::vector<std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>> vectorEventTracks4V;
-    std::vector<std::vector<Int_t>> vectorEventTracksCharge;
-    std::vector<std::vector<Float_t>> vectorEventTracksWeight;
-
-    size_t poolSize = static_cast<size_t>(poolSizeInt);
-
-    std::cout << "Processing " << fileInput << "/" << treeInput << " events with centrality from " << displaySelVarMoreeq << " to " << displaySelVarLess << std::endl;
-    auto start_full = std::chrono::high_resolution_clock::now();
-    for (Long64_t i = 0; i < nentries; i++){
-        t->GetEntry(i);
-        
-        hiBinProxy = hiBin;
-        NtrkProxy = Ntrk;
-        HFsumETProxy = HFsumET;
-        
-        if (processedEventsSig == test_limit_sig) break;
-        if (processedEventsMix == test_limit_mix) break;
-        if (!(selVarMoreeq <= *selectionVar && *selectionVar < selVarLess)) continue;
-        processedEventsSig++;
-        
-        std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> currentEventTracks4V;
-        std::vector<Int_t> currentEventTracksCharge;
-        std::vector<Float_t> currentEventTracksWeight;
-
-        for (int j = 0; j < Ntrk; j++) {
-            ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> currentTrack4V(trkPt[j], trkEta[j], trkPhi[j], pionMass);
-            currentEventTracks4V.push_back(currentTrack4V);
-            currentEventTracksCharge.push_back(trkCharge[j]);
-            currentEventTracksWeight.push_back(trkWeight[j]);
-        }
-        
-        auto start_mix_lap = std::chrono::high_resolution_clock::now();
-        // === MIXING === 
-        size_t size_before = vectorEventTracks4V.size();
-        processMixQinv(
-            currentEventTracks4V.size(),
-            thread_count,
-            poolSize,
-            vertexDistance,
-            pairChargeMult,
-            pvZ,
-            vectorEventTracks4V,
-            vectorEventTracksCharge,
-            vectorEventTracksWeight,
-            currentEventTracks4V,
-            currentEventTracksCharge,
-            currentEventTracksWeight,
-            h_qinv_mix_2l,
-            h_qinvCor_mix_2l
-        );
-        size_t size_after = vectorEventTracks4V.size();
-        if (size_after == size_before+1) processedEventsMix++;
-        if (size_before == poolSize-1 && size_after == 0) processedEventsMix++;
-
-        auto end_mix_lap = std::chrono::high_resolution_clock::now();
-        duration_mix += std::chrono::duration_cast<std::chrono::duration<double>>(end_mix_lap - start_mix_lap).count();
-        
-        // === SIGNAL (Parallelized) ===
-        auto start_signal_lap = std::chrono::high_resolution_clock::now();
-        processSignalQinv(
-            currentEventTracks4V.size(),
-            thread_count,
-            trkWeight, 
-            trkCharge, 
-            currentEventTracks4V, 
-            h_qinvSS_signal_2l, 
-            h_qinvSSCor_signal_2l, 
-            h_qinvOS_signal_2l, 
-            h_qinvOSCor_signal_2l
-        );
-
-        auto end_signal_lap = std::chrono::high_resolution_clock::now();
-        duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
-    }
-    auto end_full = std::chrono::high_resolution_clock::now();
-    duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
-
-    std::cout << "#Processed Events(Sig): " << processedEventsSig << std::endl;
-    std::cout << "#Processed Events(Mix): " << processedEventsMix << std::endl;
-    
-    TH1D *h_qinvDivCor_signal_2l = (TH1D *)h_qinvSSCor_signal_2l->Clone("h_qinvDivCor_signal_2l");
-    TH1D *h_qinvDiv_signal_2l = (TH1D *)h_qinvSS_signal_2l->Clone("h_qinvDiv_signal_2l"); 
-
-    h_qinvDivCor_signal_2l->Divide(h_qinvOSCor_signal_2l);
-    h_qinvDiv_signal_2l->Divide(h_qinvOS_signal_2l);
-
-    h_qinvDiv_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvDiv_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    
-    h_qinvDivCor_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvDivCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-
-    h_qinvDivCor_signal_2l->Sumw2();
-
-    // Save histograms
-    TCanvas *c_sig_SS = new TCanvas("c_sig_SS", "Signal Distributions", 1200, 800);
-    TCanvas *c_sig_OS = new TCanvas("c_sig_OS", "Signal Distributions", 1200, 800);
-    TCanvas *c_sig_cor_SS = new TCanvas("c_sig_cor_SS", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_sig_cor_OS = new TCanvas("c_sig_cor_OS", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_sig_cor_Div = new TCanvas("c_sig_cor_Div", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_sig_Div = new TCanvas("c_sig_Div", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_mix = new TCanvas("c_mix", "Mixing Distributions", 1200, 800);
-    TCanvas *c_mix_cor = new TCanvas("c_mix_cor", "Mixing Corrected Distributions", 1200, 800);
-
-    TLegend *legend_sig_SS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_OS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_SS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_OS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_Div = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_Div = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_mix = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_mix_cor = new TLegend(0.7, 0.7, 0.9, 0.9);
-
-    legend_sig_SS->AddEntry(h_qinvSS_signal_2l, "Signal SS - One loop", "l");
-    legend_sig_OS->AddEntry(h_qinvOS_signal_2l, "Signal OS - One loop", "l");
-    legend_sig_cor_SS->AddEntry(h_qinvSSCor_signal_2l, "Signal SS Cor - One loop", "l");
-    legend_sig_cor_OS->AddEntry(h_qinvOSCor_signal_2l, "Signal OS Cor - One loop", "l");
-    legend_sig_cor_Div->AddEntry(h_qinvOSCor_signal_2l, "Signal Div Cor - One loop", "l");
-    legend_sig_Div->AddEntry(h_qinvOSCor_signal_2l, "Signal Div - One loop", "l");
-    legend_mix->AddEntry(h_qinv_mix_2l, "Mix - Double loop", "l");
-    legend_mix_cor->AddEntry(h_qinvCor_mix_2l, "Mix Cor - Double loop", "l");
-    
-    legend_sig_SS->SetFillStyle(0); legend_sig_SS->SetBorderSize(0);
-    legend_sig_OS->SetFillStyle(0); legend_sig_OS->SetBorderSize(0);
-    legend_sig_cor_SS->SetFillStyle(0); legend_sig_cor_SS->SetBorderSize(0);
-    legend_sig_cor_OS->SetFillStyle(0); legend_sig_cor_OS->SetBorderSize(0);
-    legend_sig_cor_Div->SetFillStyle(0); legend_sig_cor_Div->SetBorderSize(0);
-    legend_sig_Div->SetFillStyle(0); legend_sig_Div->SetBorderSize(0);
-    legend_mix->SetFillStyle(0); legend_mix->SetBorderSize(0);
-    legend_mix_cor->SetFillStyle(0); legend_mix_cor->SetBorderSize(0);
-
-    c_sig_SS->cd(); gStyle->SetOptStat(0); h_qinvSS_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_SS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal SS");
-    c_sig_OS->cd(); gStyle->SetOptStat(0); h_qinvOS_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_OS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal OS");
-    c_sig_cor_SS->cd(); gStyle->SetOptStat(0); h_qinvSSCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_SS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal SS Cor");
-    c_sig_cor_OS->cd(); gStyle->SetOptStat(0); h_qinvOSCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_OS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal OS Cor");
-    c_sig_cor_Div->cd(); gStyle->SetOptStat(0); h_qinvDivCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_Div->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal Div Cor");
-    c_sig_Div->cd(); gStyle->SetOptStat(0); h_qinvDiv_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_Div->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal Div");
-    c_mix->cd(); gStyle->SetOptStat(0); h_qinv_mix_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_mix->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Mixing");
-    c_mix_cor->cd(); gStyle->SetOptStat(0); h_qinvCor_mix_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_mix_cor->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Mixing Corrected");
-
-    TH1D *histograms[] = {h_qinvSS_signal_2l, h_qinvSSCor_signal_2l, h_qinvOS_signal_2l, h_qinvOSCor_signal_2l, h_qinvDivCor_signal_2l, h_qinvDiv_signal_2l, h_qinv_mix_2l, h_qinvCor_mix_2l};
-    Int_t numHistograms = 8;
-
-    TCanvas *canvases[] = {c_sig_SS, c_sig_OS, c_sig_cor_OS, c_sig_cor_SS, c_sig_cor_Div, c_sig_Div, c_mix, c_mix_cor};
-    int numCanvases = 8;
-
-    TLegend *legends[] = {legend_sig_SS, legend_sig_OS, legend_sig_cor_OS, legend_sig_cor_SS, legend_sig_cor_Div, legend_sig_Div, legend_mix, legend_mix_cor};
-    int numLegends = 8;
-
-    char prefix[100];
-    sprintf(prefix, "sig_qinv_double_loop_parallel_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
-
-    const char *spath = "benchmarks";
-    std::vector<double> durations = {duration_full, duration_signal, duration_mix};
-    std::vector<std::string> labels = {"Total Time", "Signal Time", "Mix Time"};
-    save_benchmark_chrono(durations, labels, spath, prefix, processedEventsSig, processedEventsMix);
-    
-    const char *hpath = "./data/signal_mix/";
-    save_histograms(histograms, numHistograms, hpath, prefix, displaySelVarMoreeq, displaySelVarLess);
-
-    const char *ipath = "./imgs/test/signal_mix/";
-    const char *ifile_type = "png";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type);
-    const char *ifile_type2 = "pdf";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
-
-    AnalysisLog::instance().save("./logs", "makeSignalQinvParallel");
-    
-    close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
-}
-
-void sig_qinv_double_loop_parallel_pt(
-    const char *fileInput, 
-    const char *treeInput, 
-    double selVarMoreeq, 
-    double selVarLess, 
-    ControlVar selectionVarType = ControlVar::CENT,
-    Double_t ptMin = 0.5, 
-    Double_t ptMax = -1.0,
-    Double_t etaMin = -0.95,
-    Double_t etaMax = 0.95,  
-    int test_limit_sig = -1,
-    int test_limit_mix = -1,
-    Float_t vertexDistance = 2, 
-    int poolSizeInt = 10) 
-{
-    // Load the ROOT file and tree
-    TFile *fr = nullptr;
-    TTree *t = nullptr;
-    getFileTree(fileInput, treeInput, fr, t);
-
-    // Variables from the tree
-    Int_t maxSize = 50000, Ntrk, hiBin, trkCharge[maxSize]; 
-    Float_t HFsumET, pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
-            pionMass = 0.13957039; // Pion mass [GeV] from PDG
-    
-    double* selectionVar, displaySelVarMoreeq, displaySelVarLess;
-    double hiBinProxy, NtrkProxy, HFsumETProxy;
-    int thread_count = std::thread::hardware_concurrency();
-
-    t->SetBranchAddress("HFsumET", &HFsumET);
-    t->SetBranchAddress("Ntrk", &Ntrk);
-    t->SetBranchAddress("hiBin", &hiBin);
-    t->SetBranchAddress("pvZ", &pvZ); 
-    t->SetBranchAddress("trkCharge", trkCharge);
-    t->SetBranchAddress("trkWeight", trkWeight);
-    t->SetBranchAddress("trkPt", trkPt);
-    t->SetBranchAddress("trkEta", trkEta);
-    t->SetBranchAddress("trkPhi", trkPhi);
-
-    const char * selectionVarName;
-
-    if (selectionVarType == ControlVar::CENT){
-        selectionVar = &hiBinProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selVarMoreeq = selVarMoreeq*2;
-        selVarLess = selVarLess*2;
-        selectionVarName = "CENT";
-    } else if (selectionVarType == ControlVar::MULT){
-        selectionVar = &NtrkProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "MULT";
-    } else if (selectionVarType == ControlVar::CENTHF){
-        selectionVar = &HFsumETProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "CENTHF";
-    } else {
-        std::cerr << "Invalid selection variable type!" << std::endl;
-        return;
-    }
-
-    // Getting how many entries
-    Long64_t nentries = t->GetEntries();
-    std::cout << "#Events: " << nentries << std::endl;
-    
-    int processedEventsSig = 0;
-    int processedEventsMix = 0;
-
-    // === HISTOGRAMS ===
-    double nnscale = 10000, x0 = 0., xt=10.;
-
-    TH1D* h_qinvSSCor_signal_2l = new TH1D("h_qinvSSCor_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qinvOSCor_signal_2l = new TH1D("h_qinvOSCor_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qinvSSCor_mix_2l = new TH1D("h_qinvSSCor_mix_2l", "", nnscale, x0, xt);
-    TH1D* h_qinvOSCor_mix_2l = new TH1D("h_qinvOSCor_mix_2l", "", nnscale, x0, xt);
-
-    h_qinvSSCor_signal_2l->Sumw2();
-    h_qinvOSCor_signal_2l->Sumw2();
-    h_qinvSSCor_mix_2l->Sumw2();
-    h_qinvOSCor_mix_2l->Sumw2();
-    
-    
-    h_qinvSSCor_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvSSCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinvOSCor_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvOSCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinvSSCor_mix_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvSSCor_mix_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qinvOSCor_mix_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qinvOSCor_mix_2l->GetYaxis()->SetTitle("#Pairs");
-
-    double duration_full = 0.0, duration_mix = 0.0, duration_signal = 0.0;
-
-    std::vector<std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>> vectorEventTracks4V;
-    std::vector<std::vector<Int_t>> vectorEventTracksCharge;
-    std::vector<std::vector<Float_t>> vectorEventTracksWeight;
-    
-    size_t poolSize = static_cast<size_t>(poolSizeInt);
-
-    std::cout << "Processing " << fileInput << "/" << treeInput << " events with centrality from " << displaySelVarMoreeq << " to " << displaySelVarLess << std::endl;
-    auto start_full = std::chrono::high_resolution_clock::now();
-    for (Long64_t i = 0; i < nentries; i++){
-        t->GetEntry(i);
-        
-        hiBinProxy = hiBin;
-        NtrkProxy = Ntrk;
-        HFsumETProxy = HFsumET;
-        
-        if (processedEventsSig == test_limit_sig) break;
-        if (processedEventsMix == test_limit_mix) break;
-        if (!(selVarMoreeq <= *selectionVar && *selectionVar < selVarLess)) continue;
-        processedEventsSig++;
-        
-        std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> currentEventTracks4V;
-        std::vector<Int_t> currentEventTracksCharge;
-        std::vector<Float_t> currentEventTracksWeight;
-
-        for (int j = 0; j < Ntrk; j++) {
-            ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> currentTrack4V(trkPt[j], trkEta[j], trkPhi[j], pionMass);
-            currentEventTracks4V.push_back(currentTrack4V);
-            currentEventTracksCharge.push_back(trkCharge[j]);
-            currentEventTracksWeight.push_back(trkWeight[j]);
-        }
-        
-        auto start_mix_lap = std::chrono::high_resolution_clock::now();
-        // === MIXING === 
-        size_t size_before = vectorEventTracks4V.size();
-        processMixQinv(
-            currentEventTracks4V.size(),
-            thread_count,
-            poolSize,
-            vertexDistance,
-            pvZ,
-            vectorEventTracks4V,
-            vectorEventTracksCharge,
-            vectorEventTracksWeight,
-            currentEventTracks4V,
-            currentEventTracksCharge,
-            currentEventTracksWeight,
-            h_qinvSSCor_mix_2l,
-            h_qinvOSCor_mix_2l
-        );
-        size_t size_after = vectorEventTracks4V.size();
-        if (size_after == size_before+1) processedEventsMix++;
-        if (size_before == poolSize-1 && size_after == 0) processedEventsMix++;
-
-        auto end_mix_lap = std::chrono::high_resolution_clock::now();
-        duration_mix += std::chrono::duration_cast<std::chrono::duration<double>>(end_mix_lap - start_mix_lap).count();
-        
-        // === SIGNAL (Parallelized) ===
-        auto start_signal_lap = std::chrono::high_resolution_clock::now();
-        processSignalQinv(
-            currentEventTracks4V.size(),
-            thread_count,
-            trkWeight, 
-            trkCharge,
-            currentEventTracks4V, 
-            h_qinvSSCor_signal_2l, 
-            h_qinvOSCor_signal_2l
-        );
-
-        auto end_signal_lap = std::chrono::high_resolution_clock::now();
-        duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
-    }
-    auto end_full = std::chrono::high_resolution_clock::now();
-    duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
-
-    std::cout << "#Processed Events(Sig): " << processedEventsSig << std::endl;
-    std::cout << "#Processed Events(Mix): " << processedEventsMix << std::endl;
-
-    // Save histograms
-    TCanvas *c_sig_cor_SS = new TCanvas("c_sig_cor_SS", "Signal Corrected Distributions", 1200, 800);
-    TCanvas *c_sig_cor_OS = new TCanvas("c_sig_cor_OS", "Signal Corrected Distributions", 1200, 800);
-    TCanvas *c_mix_cor_SS = new TCanvas("c_mix_cor_SS", "Mixing Corrected Distributions", 1200, 800);
-    TCanvas *c_mix_cor_OS = new TCanvas("c_mix_cor_OS", "Mixing Corrected Distributions", 1200, 800);
-
-    TLegend *legend_sig_cor_SS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_OS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_mix_cor_SS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_mix_cor_OS = new TLegend(0.7, 0.7, 0.9, 0.9);
-
-    legend_sig_cor_SS->AddEntry(h_qinvSSCor_signal_2l, "Signal SS Cor - Double loop", "l");
-    legend_sig_cor_OS->AddEntry(h_qinvOSCor_signal_2l, "Signal OS Cor - Double loop", "l");
-    legend_mix_cor_SS->AddEntry(h_qinvSSCor_mix_2l, "Mix SS Cor- Double loop", "l");
-    legend_mix_cor_OS->AddEntry(h_qinvOSCor_mix_2l, "Mix OS Cor - Double loop", "l");
-
-    legend_sig_cor_SS->SetFillStyle(0); legend_sig_cor_SS->SetBorderSize(0);
-    legend_sig_cor_OS->SetFillStyle(0); legend_sig_cor_OS->SetBorderSize(0);
-    legend_mix_cor_SS->SetFillStyle(0); legend_mix_cor_SS->SetBorderSize(0);
-    legend_mix_cor_OS->SetFillStyle(0); legend_mix_cor_OS->SetBorderSize(0);
-
-    c_sig_cor_SS->cd(); gStyle->SetOptStat(0); h_qinvSSCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_SS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Signal SS Cor");
-    c_sig_cor_OS->cd(); gStyle->SetOptStat(0); h_qinvOSCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_OS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Signal OS Cor");
-    c_mix_cor_SS->cd(); gStyle->SetOptStat(0); h_qinvSSCor_mix_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_mix_cor_SS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Mixing SS Cor");
-    c_mix_cor_OS->cd(); gStyle->SetOptStat(0); h_qinvOSCor_mix_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_mix_cor_OS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Mixing OS Cor");
-
-    TH1D *histograms[] = {h_qinvSSCor_signal_2l, h_qinvOSCor_signal_2l, h_qinvSSCor_mix_2l, h_qinvOSCor_mix_2l};
-    Int_t numHistograms = 4;
-
-    TCanvas *canvases[] = {c_sig_cor_OS, c_sig_cor_SS, c_mix_cor_SS, c_mix_cor_OS};
-    int numCanvases = 4;
-
-    TLegend *legends[] = {legend_sig_cor_OS, legend_sig_cor_SS, legend_mix_cor_SS, legend_mix_cor_OS};
-    int numLegends = 4;
-
-    char prefix[100];
-    if (ptMax > 0){
-        if (ptMin > 0){
-            sprintf(prefix,
-                    "sig_qinv_eta-%f-to-%f_pT-from-%f-to-%f_%s_%f-%f",
-                    etaMin, etaMax, ptMin, ptMax,
-                    selectionVarName,
-                    displaySelVarMoreeq, displaySelVarLess);
-        } else {
-            sprintf(prefix,
-                    "sig_qinv_eta-%f-to-%f_pT-to-%f_%s_%f-%f",
-                    etaMin, etaMax, ptMax,
-                    selectionVarName,
-                    displaySelVarMoreeq, displaySelVarLess);
-        }
-    } else {
-        if (ptMin > 0){
-            sprintf(prefix,
-                    "sig_qinv_eta-%f-to-%f_pT-from-%f_%s_%f-%f",
-                    etaMin, etaMax, ptMin,
-                    selectionVarName,
-                    displaySelVarMoreeq, displaySelVarLess);
-        } else {
-            sprintf(prefix,
-                    "sig_qinv_eta-%f-to-%f_%s_%f-%f",
-                    etaMin, etaMax,
-                    selectionVarName,
-                    displaySelVarMoreeq, displaySelVarLess);
-        }
-    } 
-    const char *spath = "benchmarks";
-    std::vector<double> durations = {duration_full, duration_signal, duration_mix};
-    std::vector<std::string> labels = {"Total Time", "Signal Time", "Mix Time"};
-    save_benchmark_chrono(durations, labels, spath, prefix, processedEventsSig, processedEventsMix);
-    
-    const char *hpath = "./data/signal_mix/";
-    save_histograms(histograms, numHistograms, hpath, prefix, displaySelVarMoreeq, displaySelVarLess);
-
-    const char *ipath = "./imgs/test/signal_mix/";
-    const char *ifile_type = "png";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type);
-    const char *ifile_type2 = "pdf";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
-
-    AnalysisLog::instance().save("./logs", "makeSignalQinvParallelPtEta");
-    
-    close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
-}
-
-void sig_qlcms_double_loop(
-    const char *fileInput, 
-    const char *treeInput, 
-    double selVarMoreeq, 
-    double selVarLess, 
-    ControlVar selectionVarType = ControlVar::CENT, 
-    int test_limit_sig = -1,
-    int test_limit_mix = -1,
-    Float_t vertexDistance = 2, 
-    Int_t pairChargeMult = 1, 
-    int poolSizeInt = 10) 
-{
-    // Load the ROOT file and tree
-    TFile *fr = nullptr;
-    TTree *t = nullptr;
-    getFileTree(fileInput, treeInput, fr, t);
-
-    // Variables from the tree
-    Int_t maxSize = 50000, Ntrk, hiBin, trkCharge[maxSize]; 
-    Float_t HFsumET, pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
-            pionMass = 0.13957039; // Pion mass [GeV] from PDG
-    
-    double* selectionVar, displaySelVarMoreeq, displaySelVarLess;
-    double hiBinProxy, NtrkProxy, HFsumETProxy;
-    
-    t->SetBranchAddress("HFsumET", &HFsumET);
-    t->SetBranchAddress("Ntrk", &Ntrk);
-    t->SetBranchAddress("hiBin", &hiBin);
-    t->SetBranchAddress("pvZ", &pvZ); // Z in cm; Use fabs(pvZ) for absolute value of the vertex position in z axis
-    t->SetBranchAddress("trkCharge", trkCharge);
-    t->SetBranchAddress("trkWeight", trkWeight);
-    t->SetBranchAddress("trkPt", trkPt);
-    t->SetBranchAddress("trkEta", trkEta);
-    t->SetBranchAddress("trkPhi", trkPhi);
-
-    const char * selectionVarName;
-
-    if (selectionVarType == ControlVar::CENT){
-        selectionVar = &hiBinProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selVarMoreeq = selVarMoreeq*2;
-        selVarLess = selVarLess*2;
-        selectionVarName = "CENT";
-    } else if (selectionVarType == ControlVar::MULT){
-        selectionVar = &NtrkProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "MULT";
-    } else if (selectionVarType == ControlVar::CENTHF){
-        selectionVar = &HFsumETProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "CENTHF";
-    } else {
-        std::cerr << "Invalid selection variable type!" << std::endl;
-        return;
-    }
-
-    // Getting how many entries
-    Long64_t nentries = t->GetEntries(), trackvec_max_size = 0;
-    std::cout << "#Events: " << nentries << std::endl;
-    
-    // See how many processed events
-    int processedEventsSig = 0;
-    int processedEventsMix = 0;
-
-    // === HISTOGRAMA ===
-    double ninterval = 1., nlength = 0.02, nscale = 1./1.;
-    //double nnscale = numBins(ninterval, nlength, nscale), x0 = 0., xt=10.;
-    double nnscale = 10000, x0 = 0., xt=10.;
-
-    TH1D* h_qlcmsSS_signal_2l = new TH1D("h_qlcmsSS_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcmsSSCor_signal_2l = new TH1D("h_qlcmsSSCor_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcmsOS_signal_2l = new TH1D("h_qlcmsOS_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcmsOSCor_signal_2l = new TH1D("h_qlcmsOSCor_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcms_mix_2l = new TH1D("h_qlcms_mix_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcmsCor_mix_2l = new TH1D("h_qlcmsCor_mix_2l", "", nnscale, x0, xt);
-
-    h_qlcmsSSCor_signal_2l->Sumw2();
-    h_qlcmsOSCor_signal_2l->Sumw2();
-    h_qlcmsCor_mix_2l->Sumw2();
-
-    h_qlcmsSS_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsSS_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsOS_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsOS_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsSSCor_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsSSCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsOSCor_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsOSCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcms_mix_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcms_mix_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsCor_mix_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsCor_mix_2l->GetYaxis()->SetTitle("#Pairs");
-
-    double duration_full = 0.0, duration_mix = 0.0, duration_signal = 0.0;
-
-    std::vector<std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>> vectorEventTracks4V;
-    std::vector<std::vector<Int_t>> vectorEventTracksCharge;
-    std::vector<std::vector<Float_t>> vectorEventTracksWeight;
-
-    size_t poolSize = static_cast<size_t>(poolSizeInt);
-
-    auto start_full = std::chrono::high_resolution_clock::now();
-    for (Long64_t i = 0; i < nentries; i++){
-        t->GetEntry(i);
-        
-        hiBinProxy = hiBin;
-        NtrkProxy = Ntrk;
-        HFsumETProxy = HFsumET;
-        
-        if (processedEventsSig == test_limit_sig) break;
-        if (processedEventsMix == test_limit_mix) break;
-        if (!(selVarMoreeq <= *selectionVar && *selectionVar < selVarLess)) continue;
-        processedEventsSig++;
-        
-        std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> currentEventTracks4V;
-        std::vector<Int_t> currentEventTracksCharge;
-        std::vector<Float_t> currentEventTracksWeight;
-
-        for (int j = 0; j < Ntrk; j++) {
-            ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> currentTrack4V(trkPt[j], trkEta[j], trkPhi[j], pionMass);
-            currentEventTracks4V.push_back(currentTrack4V);
-            currentEventTracksCharge.push_back(trkCharge[j]);
-            currentEventTracksWeight.push_back(trkWeight[j]);
-        }
-        
-        auto start_mix_lap = std::chrono::high_resolution_clock::now();
-        // === MIXING === 
-        size_t size_before = vectorEventTracks4V.size();
-        if (pvZ < vertexDistance) {
-            if (!currentEventTracks4V.empty()) {
-                if (vectorEventTracks4V.size() < poolSize && !vectorEventTracks4V.empty()) { 
-                    for (size_t nEv = 0; nEv < vectorEventTracks4V.size(); nEv++) {
-                        for (size_t p1 = 0; p1 < vectorEventTracks4V[nEv].size(); p1++) {
-                            for (size_t p2 = 0; p2 < currentEventTracks4V.size(); p2++) {
-                                if (!(vectorEventTracksCharge[nEv][p1]*trkCharge[p2] == pairChargeMult)) continue;
-                                if (std::isinf(vectorEventTracksWeight[nEv][p1]*trkWeight[p2])) continue;
-                                
-                                double qinv = GetQ(vectorEventTracks4V[nEv][p1], currentEventTracks4V[p2]);
-                                h_qlcms_mix_2l->Fill(qinv);
-                                h_qlcmsCor_mix_2l->Fill(qinv, vectorEventTracksWeight[nEv][p1]*trkWeight[p2]);
-                            }
+            ~LocalHistograms() { delete h; }
+        };
+
+        std::vector<std::thread> threads;
+        std::vector<std::unique_ptr<LocalHistograms>> local_hists;
+        for (int i = 0; i < thread_count; ++i) local_hists.push_back(std::make_unique<LocalHistograms>(hMixSS));
+
+        auto thread_task = [&](size_t start, size_t end, LocalHistograms* lh) {
+            for (size_t p1 = start; p1 < end; ++p1) {
+                for (const auto& pastEv : pool) {
+                    for (size_t p2 = 0; p2 < pastEv.tracks.size(); ++p2) {
+                        if (currentEv.charges[p1] * pastEv.charges[p2] > 0) { // SS Only
+                            double q = GetQ(currentEv.tracks[p1], pastEv.tracks[p2]);
+                            lh->h->Fill(q, currentEv.weights[p1] * pastEv.weights[p2]);
                         }
                     }
                 }
-                vectorEventTracks4V.push_back(currentEventTracks4V);
-                vectorEventTracksCharge.push_back(currentEventTracksCharge);
-                vectorEventTracksWeight.push_back(currentEventTracksWeight);
-                
-                if (vectorEventTracks4V.size() >= poolSize) {
-                    vectorEventTracks4V.clear();
-                    vectorEventTracksCharge.clear();
-                    vectorEventTracksWeight.clear();
+            }
+        };
+
+        size_t chunk = currentEv.tracks.size() / thread_count;
+        for (int t = 0; t < thread_count; t++) {
+            size_t start = t * chunk;
+            size_t end = (t == thread_count - 1) ? currentEv.tracks.size() : (t + 1) * chunk;
+            threads.emplace_back(thread_task, start, end, local_hists[t].get());
+        }
+        for (auto& t : threads) t.join();
+        for (auto& lh : local_hists) hMixSS->Add(lh->h);
+    }
+
+    // --- QLCMS Processes ---
+    void processSignalQLCMS(int thread_count, const EventData& currentEv, TH1D* hSigSS) {
+        size_t n_tracks = currentEv.tracks.size();
+        if (n_tracks <= 1) return;
+        if (thread_count == 0) thread_count = 1;
+
+        struct LocalHistograms {
+            TH1D* h;
+            LocalHistograms(const TH1D* base) {
+                h = (TH1D*)base->Clone(TString::Format("%s_clone_%p", base->GetName(), this));
+                h->Reset();
+            }
+            ~LocalHistograms() { delete h; }
+        };
+
+        std::vector<std::thread> threads;
+        std::vector<std::unique_ptr<LocalHistograms>> local_hists;
+        for (int i = 0; i < thread_count; ++i) local_hists.push_back(std::make_unique<LocalHistograms>(hSigSS));
+
+        auto thread_task = [&](size_t start, size_t end, LocalHistograms* lh) {
+            for (size_t p1 = start; p1 < end; p1++) {
+                for (size_t p2 = p1 + 1; p2 < n_tracks; p2++) {
+                    if (currentEv.charges[p1] * currentEv.charges[p2] > 0) { // SS Only
+                        double q = GetQLCMS(currentEv.tracks[p1], currentEv.tracks[p2]);
+                        lh->h->Fill(q, currentEv.weights[p1] * currentEv.weights[p2]);
+                    }
                 }
             }
+        };
+
+        size_t chunk = n_tracks / thread_count;
+        for (int t = 0; t < thread_count; t++) {
+            size_t start = t * chunk;
+            size_t end = (t == thread_count - 1) ? n_tracks : (t + 1) * chunk;
+            threads.emplace_back(thread_task, start, end, local_hists[t].get());
         }
-        size_t size_after = vectorEventTracks4V.size();
-        if (size_after == size_before+1) processedEventsMix++;
-        if (size_before == poolSize-1 && size_after == 0) processedEventsMix++;
-        
-        auto end_mix_lap = std::chrono::high_resolution_clock::now();
-        duration_mix += std::chrono::duration_cast<std::chrono::duration<double>>(end_mix_lap - start_mix_lap).count();
-        
-        auto start_signal_lap = std::chrono::high_resolution_clock::now();
-        if (currentEventTracks4V.size() <= 1) return; // check if event has 2 or more tracks 
+        for (auto& t : threads) t.join();
+        for (auto& lh : local_hists) hSigSS->Add(lh->h);
+    }
 
-        for (size_t p1 = 0; p1 < currentEventTracks4V.size(); p1++) {
-            for (size_t p2 = p1+1; p2 < currentEventTracks4V.size(); p2++) {
-                // Checks
-                if (std::isinf(trkWeight[p1] * trkWeight[p2])) continue; // Check if weight is infinity
+    void processMixQLCMS(int thread_count, const EventData& currentEv, const std::vector<EventData>& pool, TH1D* hMixSS) {
+        if (currentEv.tracks.empty() || pool.empty()) return;
+        if (thread_count == 0) thread_count = 1;
 
-                // Calculate q_inv
-                double qinv = GetQ(currentEventTracks4V[p1], currentEventTracks4V[p2]);
+        struct LocalHistograms {
+            TH1D* h;
+            LocalHistograms(const TH1D* base) {
+                h = (TH1D*)base->Clone(TString::Format("%s_clone_%p", base->GetName(), this));
+                h->Reset();
+            }
+            ~LocalHistograms() { delete h; }
+        };
 
-                // Use a lock_guard to acquire the mutex. It will be automatically released.
-                if (trkCharge[p1] * trkCharge[p2] > 0) { // Fills same charge particle pair histogram
-                    h_qlcmsSS_signal_2l->Fill(qinv);
-                    h_qlcmsSSCor_signal_2l->Fill(qinv, trkWeight[p1] * trkWeight[p2]);
-                } else { // Fills opposite charge particle pair histogram
-                    h_qlcmsOS_signal_2l->Fill(qinv);
-                    h_qlcmsOSCor_signal_2l->Fill(qinv, trkWeight[p1] * trkWeight[p2]);
+        std::vector<std::thread> threads;
+        std::vector<std::unique_ptr<LocalHistograms>> local_hists;
+        for (int i = 0; i < thread_count; ++i) local_hists.push_back(std::make_unique<LocalHistograms>(hMixSS));
+
+        auto thread_task = [&](size_t start, size_t end, LocalHistograms* lh) {
+            for (size_t p1 = start; p1 < end; ++p1) {
+                for (const auto& pastEv : pool) {
+                    for (size_t p2 = 0; p2 < pastEv.tracks.size(); ++p2) {
+                        if (currentEv.charges[p1] * pastEv.charges[p2] > 0) { // SS Only
+                            double q = GetQLCMS(currentEv.tracks[p1], pastEv.tracks[p2]);
+                            lh->h->Fill(q, currentEv.weights[p1] * pastEv.weights[p2]);
+                        }
+                    }
                 }
-
             }
+        };
+
+        size_t chunk = currentEv.tracks.size() / thread_count;
+        for (int t = 0; t < thread_count; t++) {
+            size_t start = t * chunk;
+            size_t end = (t == thread_count - 1) ? currentEv.tracks.size() : (t + 1) * chunk;
+            threads.emplace_back(thread_task, start, end, local_hists[t].get());
         }
-
-        auto end_signal_lap = std::chrono::high_resolution_clock::now();
-        duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
-    }
-        
-    auto end_full = std::chrono::high_resolution_clock::now();
-    duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
-
-    std::cout << "#Processed Events(Sig): " << processedEventsSig << std::endl;
-    std::cout << "#Processed Events(Mix): " << processedEventsMix << std::endl;
-    
-    TH1D *h_qlcmsDivCor_signal_2l = (TH1D *)h_qlcmsSSCor_signal_2l->Clone("h_qlcmsDivCor_signal_2l");
-    TH1D *h_qlcmsDiv_signal_2l = (TH1D *)h_qlcmsSS_signal_2l->Clone("h_qlcmsDiv_signal_2l");    
-
-    h_qlcmsDivCor_signal_2l->Divide(h_qlcmsOSCor_signal_2l);
-    h_qlcmsDiv_signal_2l->Divide(h_qlcmsOS_signal_2l);
-    h_qlcmsDiv_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsDiv_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsDivCor_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsDivCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsDivCor_signal_2l->Sumw2();
-
-    // Save histograms
-    TCanvas *c_sig_SS = new TCanvas("c_sig_SS", "Signal Distributions", 1200, 800);
-    TCanvas *c_sig_OS = new TCanvas("c_sig_OS", "Signal Distributions", 1200, 800);
-    TCanvas *c_sig_cor_SS = new TCanvas("c_sig_cor_SS", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_sig_cor_OS = new TCanvas("c_sig_cor_OS", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_sig_cor_Div = new TCanvas("c_sig_cor_Div", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_sig_Div = new TCanvas("c_sig_Div", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_mix = new TCanvas("c_mix", "Mixing Distributions", 1200, 800);
-    TCanvas *c_mix_cor = new TCanvas("c_mix_cor", "Mixing Corrected Distributions", 1200, 800);
-    
-    TLegend *legend_sig_SS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_OS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_SS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_OS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_Div = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_Div = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_mix = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_mix_cor = new TLegend(0.7, 0.7, 0.9, 0.9);
-
-    legend_sig_SS->AddEntry(h_qlcmsSS_signal_2l, "Signal SS - One loop", "l");
-    legend_sig_OS->AddEntry(h_qlcmsOS_signal_2l, "Signal OS - One loop", "l");
-    legend_sig_cor_SS->AddEntry(h_qlcmsSSCor_signal_2l, "Signal SS Cor - One loop", "l");
-    legend_sig_cor_OS->AddEntry(h_qlcmsOSCor_signal_2l, "Signal OS Cor - One loop", "l");
-    legend_sig_cor_Div->AddEntry(h_qlcmsOSCor_signal_2l, "Signal Div Cor - One loop", "l");
-    legend_sig_Div->AddEntry(h_qlcmsOSCor_signal_2l, "Signal Div - One loop", "l");
-    legend_mix->AddEntry(h_qlcms_mix_2l, "Mix - Double loop", "l");
-    legend_mix_cor->AddEntry(h_qlcmsCor_mix_2l, "Mix Cor - Double loop", "l");
-    
-    legend_sig_SS->SetFillStyle(0); legend_sig_SS->SetBorderSize(0);
-    legend_sig_OS->SetFillStyle(0); legend_sig_OS->SetBorderSize(0);
-    legend_sig_cor_SS->SetFillStyle(0); legend_sig_cor_SS->SetBorderSize(0);
-    legend_sig_cor_OS->SetFillStyle(0); legend_sig_cor_OS->SetBorderSize(0);
-    legend_sig_cor_Div->SetFillStyle(0); legend_sig_cor_Div->SetBorderSize(0);
-    legend_sig_Div->SetFillStyle(0); legend_sig_Div->SetBorderSize(0);
-    legend_mix->SetFillStyle(0); legend_mix->SetBorderSize(0);
-    legend_mix_cor->SetFillStyle(0); legend_mix_cor->SetBorderSize(0);
-
-    c_sig_SS->cd(); gStyle->SetOptStat(0); h_qlcmsSS_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_SS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal SS");
-    c_sig_OS->cd(); gStyle->SetOptStat(0); h_qlcmsOS_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_OS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal OS");
-    c_sig_cor_SS->cd(); gStyle->SetOptStat(0); h_qlcmsSSCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_SS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal SS Cor");
-    c_sig_cor_OS->cd(); gStyle->SetOptStat(0); h_qlcmsOSCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_OS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal OS Cor");
-    c_sig_cor_Div->cd(); gStyle->SetOptStat(0); h_qlcmsDivCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_Div->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal Div Cor");
-    c_sig_Div->cd(); gStyle->SetOptStat(0); h_qlcmsDiv_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_Div->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal Div");
-    c_mix->cd(); gStyle->SetOptStat(0); h_qlcms_mix_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_mix->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Mixing");
-    c_mix_cor->cd(); gStyle->SetOptStat(0); h_qlcmsCor_mix_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_mix_cor->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Mixing Corrected");
-
-    TH1D *histograms[] = {h_qlcmsSS_signal_2l, h_qlcmsSSCor_signal_2l, h_qlcmsOS_signal_2l, h_qlcmsOSCor_signal_2l, h_qlcmsDivCor_signal_2l, h_qlcmsDiv_signal_2l, h_qlcms_mix_2l, h_qlcmsCor_mix_2l};
-    Int_t numHistograms = 8;
-
-    TCanvas *canvases[] = {c_sig_SS, c_sig_OS, c_sig_cor_OS, c_sig_cor_SS, c_sig_cor_Div, c_sig_Div, c_mix, c_mix_cor};
-    int numCanvases = 8;
-
-    TLegend *legends[] = {legend_sig_SS, legend_sig_OS, legend_sig_cor_OS, legend_sig_cor_SS, legend_sig_cor_Div, legend_sig_Div, legend_mix, legend_mix_cor};
-    int numLegends = 8;
-
-    // Prefix
-    char prefix[100];
-    sprintf(prefix, "sig_qlcms_double_loop_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
-
-    // Saving Benchmakrs
-    const char *spath = "benchmarks";
-    std::vector<double> durations = {duration_full, duration_signal, duration_mix};
-    std::vector<std::string> labels = {"Total Time", "Signal Time", "Mix Time"};
-    save_benchmark_chrono(durations, labels, spath, prefix, processedEventsSig, processedEventsMix);
-
-    // Saving histograms
-    const char *hpath = "./data/signal_mix/";
-    save_histograms(histograms, numHistograms, hpath, prefix, displaySelVarMoreeq, displaySelVarLess);
-
-    // Saving image
-    const char *ipath = "./imgs/test/signal_mix/";
-    const char *ifile_type = "png";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type);
-    const char *ifile_type2 = "pdf";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
-    
-    AnalysisLog::instance().save("./logs", "makeSignalQLCMS");
-
-    // Closing program
-    close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
-}
-
-void sig_qlcms_double_loop_parallel(
-    const char *fileInput, 
-    const char *treeInput, 
-    double selVarMoreeq, 
-    double selVarLess, 
-    ControlVar selectionVarType = ControlVar::CENT, 
-    int test_limit_sig = -1,
-    int test_limit_mix = -1,
-    Float_t vertexDistance = 2, 
-    Int_t pairChargeMult = 1, 
-    int poolSizeInt = 10) 
-{
-    
-    // Load the ROOT file and tree
-    TFile *fr = nullptr;
-    TTree *t = nullptr;
-    getFileTree(fileInput, treeInput, fr, t);
-
-    // Variables from the tree
-    Int_t maxSize = 50000, Ntrk, hiBin, trkCharge[maxSize]; 
-    Float_t HFsumET, pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
-            pionMass = 0.13957039; // Pion mass [GeV] from PDG
-    
-    double* selectionVar, displaySelVarMoreeq, displaySelVarLess;
-    double hiBinProxy, NtrkProxy, HFsumETProxy;
-    int thread_count = std::thread::hardware_concurrency();
-
-    t->SetBranchAddress("HFsumET", &HFsumET);
-    t->SetBranchAddress("Ntrk", &Ntrk);
-    t->SetBranchAddress("hiBin", &hiBin);
-    t->SetBranchAddress("pvZ", &pvZ); 
-    t->SetBranchAddress("trkCharge", trkCharge);
-    t->SetBranchAddress("trkWeight", trkWeight);
-    t->SetBranchAddress("trkPt", trkPt);
-    t->SetBranchAddress("trkEta", trkEta);
-    t->SetBranchAddress("trkPhi", trkPhi);
-
-    const char * selectionVarName;
-
-    if (selectionVarType == ControlVar::CENT){
-        selectionVar = &hiBinProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selVarMoreeq = selVarMoreeq*2;
-        selVarLess = selVarLess*2;
-        selectionVarName = "CENT";
-    } else if (selectionVarType == ControlVar::MULT){
-        selectionVar = &NtrkProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "MULT";
-    } else if (selectionVarType == ControlVar::CENTHF){
-        selectionVar = &HFsumETProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "CENTHF";
-    } else {
-        std::cerr << "Invalid selection variable type!" << std::endl;
-        return;
+        for (auto& t : threads) t.join();
+        for (auto& lh : local_hists) hMixSS->Add(lh->h);
     }
 
-    // Getting how many entries
-    Long64_t nentries = t->GetEntries();
-    std::cout << "#Events: " << nentries << std::endl;
-    
-    int processedEventsSig = 0;
-    int processedEventsMix = 0;
-
-    // === HISTOGRAMS ===
-    double nnscale = 10000, x0 = 0., xt=10.;
-
-    TH1D* h_qlcmsSS_signal_2l = new TH1D("h_qlcmsSS_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcmsSSCor_signal_2l = new TH1D("h_qlcmsSSCor_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcmsOS_signal_2l = new TH1D("h_qlcmsOS_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcmsOSCor_signal_2l = new TH1D("h_qlcmsOSCor_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcms_mix_2l = new TH1D("h_qlcms_mix_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcmsCor_mix_2l = new TH1D("h_qlcmsCor_mix_2l", "", nnscale, x0, xt);
-
-    h_qlcmsSSCor_signal_2l->Sumw2();
-    h_qlcmsOSCor_signal_2l->Sumw2();
-    h_qlcmsCor_mix_2l->Sumw2();
-    
-    h_qlcmsSS_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsSS_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsOS_signal_2l->GetXaxis()->SetTitle("q_{inv}[GeV]");
-    h_qlcmsOS_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsSSCor_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsSSCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsOSCor_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsOSCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcms_mix_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcms_mix_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsCor_mix_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsCor_mix_2l->GetYaxis()->SetTitle("#Pairs");
-
-    double duration_full = 0.0, duration_mix = 0.0, duration_signal = 0.0;
-
-    std::vector<std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>> vectorEventTracks4V;
-    std::vector<std::vector<Int_t>> vectorEventTracksCharge;
-    std::vector<std::vector<Float_t>> vectorEventTracksWeight;
-    
-    size_t poolSize = static_cast<size_t>(poolSizeInt);
-
-    std::cout << "Processing " << fileInput << "/" << treeInput << " events with centrality from " << displaySelVarMoreeq << " to " << displaySelVarLess << std::endl;
-    auto start_full = std::chrono::high_resolution_clock::now();
-    for (Long64_t i = 0; i < nentries; i++){
-        t->GetEntry(i);
-        
-        hiBinProxy = hiBin;
-        NtrkProxy = Ntrk;
-        HFsumETProxy = HFsumET;
-        
-        if (processedEventsSig == test_limit_sig) break;
-        if (processedEventsMix == test_limit_mix) break;
-        if (!(selVarMoreeq <= *selectionVar && *selectionVar < selVarLess)) continue;
-        processedEventsSig++;
-        
-        std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> currentEventTracks4V;
-        std::vector<Int_t> currentEventTracksCharge;
-        std::vector<Float_t> currentEventTracksWeight;
-
-        for (int j = 0; j < Ntrk; j++) {
-            ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> currentTrack4V(trkPt[j], trkEta[j], trkPhi[j], pionMass);
-            currentEventTracks4V.push_back(currentTrack4V);
-            currentEventTracksCharge.push_back(trkCharge[j]);
-            currentEventTracksWeight.push_back(trkWeight[j]);
-        }
-        
-        auto start_mix_lap = std::chrono::high_resolution_clock::now();
-        // === MIXING === 
-        size_t size_before = vectorEventTracks4V.size();
-        processMixQLCMS(
-            currentEventTracks4V.size(),
-            thread_count,
-            poolSize,
-            vertexDistance,
-            pairChargeMult,
-            pvZ,
-            vectorEventTracks4V,
-            vectorEventTracksCharge,
-            vectorEventTracksWeight,
-            currentEventTracks4V,
-            currentEventTracksCharge,
-            currentEventTracksWeight,
-            h_qlcms_mix_2l,
-            h_qlcmsCor_mix_2l
-        );
-        size_t size_after = vectorEventTracks4V.size();
-        if (size_after == size_before+1) processedEventsMix++;
-        if (size_before == poolSize-1 && size_after == 0) processedEventsMix++;
-
-        auto end_mix_lap = std::chrono::high_resolution_clock::now();
-        duration_mix += std::chrono::duration_cast<std::chrono::duration<double>>(end_mix_lap - start_mix_lap).count();
-        
-        // === SIGNAL (Parallelized) ===
-        auto start_signal_lap = std::chrono::high_resolution_clock::now();
-        processSignalQLCMS(
-            currentEventTracks4V.size(),
-            thread_count,
-            trkWeight, 
-            trkCharge, 
-            currentEventTracks4V, 
-            h_qlcmsSS_signal_2l, 
-            h_qlcmsSSCor_signal_2l, 
-            h_qlcmsOS_signal_2l, 
-            h_qlcmsOSCor_signal_2l
-        );
-
-        auto end_signal_lap = std::chrono::high_resolution_clock::now();
-        duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
-    }
-    auto end_full = std::chrono::high_resolution_clock::now();
-    duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
-
-    std::cout << "#Processed Events(Sig): " << processedEventsSig << std::endl;
-    std::cout << "#Processed Events(Mix): " << processedEventsMix << std::endl;
-    
-    TH1D *h_qlcmsDivCor_signal_2l = (TH1D *)h_qlcmsSSCor_signal_2l->Clone("h_qlcmsDivCor_signal_2l");
-    TH1D *h_qlcmsDiv_signal_2l = (TH1D *)h_qlcmsSS_signal_2l->Clone("h_qlcmsDiv_signal_2l"); 
-
-    h_qlcmsDivCor_signal_2l->Divide(h_qlcmsOSCor_signal_2l);
-    h_qlcmsDiv_signal_2l->Divide(h_qlcmsOS_signal_2l);
-    h_qlcmsDiv_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsDiv_signal_2l->GetYaxis()->SetTitle("#Pairs");
-
-    h_qlcmsDivCor_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsDivCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-
-    h_qlcmsDivCor_signal_2l->Sumw2();
-
-    // Save histograms
-    TCanvas *c_sig_SS = new TCanvas("c_sig_SS", "Signal Distributions", 1200, 800);
-    TCanvas *c_sig_OS = new TCanvas("c_sig_OS", "Signal Distributions", 1200, 800);
-    TCanvas *c_sig_cor_SS = new TCanvas("c_sig_cor_SS", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_sig_cor_OS = new TCanvas("c_sig_cor_OS", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_sig_cor_Div = new TCanvas("c_sig_cor_Div", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_sig_Div = new TCanvas("c_sig_Div", "Signal Correlation Distributions", 1200, 800);
-    TCanvas *c_mix = new TCanvas("c_mix", "Mixing Distributions", 1200, 800);
-    TCanvas *c_mix_cor = new TCanvas("c_mix_cor", "Mixing Corrected Distributions", 1200, 800);
-
-    TLegend *legend_sig_SS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_OS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_SS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_OS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_Div = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_Div = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_mix = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_mix_cor = new TLegend(0.7, 0.7, 0.9, 0.9);
-
-    legend_sig_SS->AddEntry(h_qlcmsSS_signal_2l, "Signal SS - One loop", "l");
-    legend_sig_OS->AddEntry(h_qlcmsOS_signal_2l, "Signal OS - One loop", "l");
-    legend_sig_cor_SS->AddEntry(h_qlcmsSSCor_signal_2l, "Signal SS Cor - One loop", "l");
-    legend_sig_cor_OS->AddEntry(h_qlcmsOSCor_signal_2l, "Signal OS Cor - One loop", "l");
-    legend_sig_cor_Div->AddEntry(h_qlcmsOSCor_signal_2l, "Signal Div Cor - One loop", "l");
-    legend_sig_Div->AddEntry(h_qlcmsOSCor_signal_2l, "Signal Div - One loop", "l");
-    legend_mix->AddEntry(h_qlcms_mix_2l, "Mix - Double loop", "l");
-    legend_mix_cor->AddEntry(h_qlcmsCor_mix_2l, "Mix Cor - Double loop", "l");
-
-    legend_sig_SS->SetFillStyle(0); legend_sig_SS->SetBorderSize(0);
-    legend_sig_OS->SetFillStyle(0); legend_sig_OS->SetBorderSize(0);
-    legend_sig_cor_SS->SetFillStyle(0); legend_sig_cor_SS->SetBorderSize(0);
-    legend_sig_cor_OS->SetFillStyle(0); legend_sig_cor_OS->SetBorderSize(0);
-    legend_sig_cor_Div->SetFillStyle(0); legend_sig_cor_Div->SetBorderSize(0);
-    legend_sig_Div->SetFillStyle(0); legend_sig_Div->SetBorderSize(0);
-    legend_mix->SetFillStyle(0); legend_mix->SetBorderSize(0);
-    legend_mix_cor->SetFillStyle(0); legend_mix_cor->SetBorderSize(0);
-
-    c_sig_SS->cd(); gStyle->SetOptStat(0); h_qlcmsSS_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_SS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal SS");
-    c_sig_OS->cd(); gStyle->SetOptStat(0); h_qlcmsOS_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_OS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal OS");
-    c_sig_cor_SS->cd(); gStyle->SetOptStat(0); h_qlcmsSSCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_SS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal SS Cor");
-    c_sig_cor_OS->cd(); gStyle->SetOptStat(0); h_qlcmsOSCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_OS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal OS Cor");
-    c_sig_cor_Div->cd(); gStyle->SetOptStat(0); h_qlcmsDivCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_Div->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal Div Cor");
-    c_sig_Div->cd(); gStyle->SetOptStat(0); h_qlcmsDiv_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_Div->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Signal Div");
-    c_mix->cd(); gStyle->SetOptStat(0); h_qlcms_mix_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_mix->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Mixing");
-    c_mix_cor->cd(); gStyle->SetOptStat(0); h_qlcmsCor_mix_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_mix_cor->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Preliminary}", "PbPb 2.76 TeV | Mixing Corrected");
-
-    TH1D *histograms[] = {h_qlcmsSS_signal_2l, h_qlcmsSSCor_signal_2l, h_qlcmsOS_signal_2l, h_qlcmsOSCor_signal_2l, h_qlcmsDivCor_signal_2l, h_qlcmsDiv_signal_2l, h_qlcms_mix_2l, h_qlcmsCor_mix_2l};
-    Int_t numHistograms = 8;
-
-    TCanvas *canvases[] = {c_sig_SS, c_sig_OS, c_sig_cor_OS, c_sig_cor_SS, c_sig_cor_Div, c_sig_Div, c_mix, c_mix_cor};
-    int numCanvases = 8;
-
-    TLegend *legends[] = {legend_sig_SS, legend_sig_OS, legend_sig_cor_OS, legend_sig_cor_SS, legend_sig_cor_Div, legend_sig_Div, legend_mix, legend_mix_cor};
-    int numLegends = 8;
-
-    char prefix[100];
-    sprintf(prefix, "sig_qlcms_double_loop_parallel_%s_%f-%f", selectionVarName, displaySelVarMoreeq, displaySelVarLess);
-
-    const char *spath = "benchmarks";
-    std::vector<double> durations = {duration_full, duration_signal, duration_mix};
-    std::vector<std::string> labels = {"Total Time", "Signal Time", "Mix Time"};
-    save_benchmark_chrono(durations, labels, spath, prefix, processedEventsSig, processedEventsMix);
-    
-    const char *hpath = "./data/signal_mix/";
-    save_histograms(histograms, numHistograms, hpath, prefix, displaySelVarMoreeq, displaySelVarLess);
-
-    const char *ipath = "./imgs/test/signal_mix/";
-    const char *ifile_type = "png";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type);
-    const char *ifile_type2 = "pdf";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
-    
-    AnalysisLog::instance().save("./logs", "makeSignalQLCMSParallel");
-
-    close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
-}
-
-void sig_qlcms_double_loop_parallel_pt(
-    const char *fileInput, 
-    const char *treeInput, 
-    double selVarMoreeq, 
-    double selVarLess, 
-    ControlVar selectionVarType = ControlVar::CENT,
-    Double_t ptMin = 0.5, 
-    Double_t ptMax = -1.0,
-    Double_t etaMin = -0.95,
-    Double_t etaMax = 0.95,  
-    int test_limit_sig = -1,
-    int test_limit_mix = -1,
-    Float_t vertexDistance = 2, 
-    int poolSizeInt = 10) 
-{
-    // Load the ROOT file and tree
-    TFile *fr = nullptr;
-    TTree *t = nullptr;
-    getFileTree(fileInput, treeInput, fr, t);
-
-    // Variables from the tree
-    Int_t maxSize = 50000, Ntrk, hiBin, trkCharge[maxSize]; 
-    Float_t HFsumET, pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
-            pionMass = 0.13957039; // Pion mass [GeV] from PDG
-    
-    double* selectionVar, displaySelVarMoreeq, displaySelVarLess;
-    double hiBinProxy, NtrkProxy, HFsumETProxy;
-    int thread_count = std::thread::hardware_concurrency();
-
-    t->SetBranchAddress("HFsumET", &HFsumET);
-    t->SetBranchAddress("Ntrk", &Ntrk);
-    t->SetBranchAddress("hiBin", &hiBin);
-    t->SetBranchAddress("pvZ", &pvZ); 
-    t->SetBranchAddress("trkCharge", trkCharge);
-    t->SetBranchAddress("trkWeight", trkWeight);
-    t->SetBranchAddress("trkPt", trkPt);
-    t->SetBranchAddress("trkEta", trkEta);
-    t->SetBranchAddress("trkPhi", trkPhi);
-
-    const char * selectionVarName;
-
-    if (selectionVarType == ControlVar::CENT){
-        selectionVar = &hiBinProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selVarMoreeq = selVarMoreeq*2;
-        selVarLess = selVarLess*2;
-        selectionVarName = "CENT";
-    } else if (selectionVarType == ControlVar::MULT){
-        selectionVar = &NtrkProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "MULT";
-    } else if (selectionVarType == ControlVar::CENTHF){
-        selectionVar = &HFsumETProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "CENTHF";
-    } else {
-        std::cerr << "Invalid selection variable type!" << std::endl;
-        return;
-    }
-
-    // Getting how many entries
-    Long64_t nentries = t->GetEntries();
-    std::cout << "#Events: " << nentries << std::endl;
-    
-    int processedEventsSig = 0;
-    int processedEventsMix = 0;
-
-    // === HISTOGRAMS ===
-    double nnscale = 10000, x0 = 0., xt=10.;
-
-    TH1D* h_qlcmsSSCor_signal_2l = new TH1D("h_qlcmsSSCor_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcmsOSCor_signal_2l = new TH1D("h_qlcmsOSCor_signal_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcmsSSCor_mix_2l = new TH1D("h_qlcmsSSCor_mix_2l", "", nnscale, x0, xt);
-    TH1D* h_qlcmsOSCor_mix_2l = new TH1D("h_qlcmsOSCor_mix_2l", "", nnscale, x0, xt);
-
-    h_qlcmsSSCor_signal_2l->Sumw2();
-    h_qlcmsOSCor_signal_2l->Sumw2();
-    h_qlcmsSSCor_mix_2l->Sumw2();
-    h_qlcmsOSCor_mix_2l->Sumw2();
-    
-    h_qlcmsSSCor_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsSSCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsOSCor_signal_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsOSCor_signal_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsSSCor_mix_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsSSCor_mix_2l->GetYaxis()->SetTitle("#Pairs");
-    h_qlcmsOSCor_mix_2l->GetXaxis()->SetTitle("q_{LCMS}[GeV]");
-    h_qlcmsOSCor_mix_2l->GetYaxis()->SetTitle("#Pairs");
-
-    double duration_full = 0.0, duration_mix = 0.0, duration_signal = 0.0;
-
-    std::vector<std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>> vectorEventTracks4V;
-    std::vector<std::vector<Int_t>> vectorEventTracksCharge;
-    std::vector<std::vector<Float_t>> vectorEventTracksWeight;
-    
-    size_t poolSize = static_cast<size_t>(poolSizeInt);
-
-    std::cout << "Processing " << fileInput << "/" << treeInput << " events with centrality from " << displaySelVarMoreeq << " to " << displaySelVarLess << std::endl;
-    auto start_full = std::chrono::high_resolution_clock::now();
-    for (Long64_t i = 0; i < nentries; i++){
-        t->GetEntry(i);
-        
-        hiBinProxy = hiBin;
-        NtrkProxy = Ntrk;
-        HFsumETProxy = HFsumET;
-        if (processedEventsSig == test_limit_sig) break;
-        if (processedEventsMix == test_limit_mix) break;
-        if (!(selVarMoreeq <= *selectionVar && *selectionVar < selVarLess)) continue;
-        if (std::abs(pvZ) >= vertexDistance) continue;
-        processedEventsSig++;
-        
-        std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> currentEventTracks4V;
-        std::vector<Int_t> currentEventTracksCharge;
-        std::vector<Float_t> currentEventTracksWeight;
-
-        for (int j = 0; j < Ntrk; j++) {
-            ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> currentTrack4V(trkPt[j], trkEta[j], trkPhi[j], pionMass);
-            currentEventTracks4V.push_back(currentTrack4V);
-            currentEventTracksCharge.push_back(trkCharge[j]);
-            currentEventTracksWeight.push_back(trkWeight[j]);
-        }
-        
-        auto start_mix_lap = std::chrono::high_resolution_clock::now();
-        // === MIXING === 
-        size_t size_before = vectorEventTracks4V.size();
-        processMixQLCMS(
-            currentEventTracks4V.size(),
-            thread_count,
-            poolSize,
-            vertexDistance,
-            pvZ,
-            vectorEventTracks4V,
-            vectorEventTracksCharge,
-            vectorEventTracksWeight,
-            currentEventTracks4V,
-            currentEventTracksCharge,
-            currentEventTracksWeight,
-            h_qlcmsSSCor_mix_2l,
-            h_qlcmsOSCor_mix_2l
-        );
-        size_t size_after = vectorEventTracks4V.size();
-        if (size_after == size_before+1) processedEventsMix++;
-        if (size_before == poolSize-1 && size_after == 0) processedEventsMix++;
-
-        auto end_mix_lap = std::chrono::high_resolution_clock::now();
-        duration_mix += std::chrono::duration_cast<std::chrono::duration<double>>(end_mix_lap - start_mix_lap).count();
-        
-        // === SIGNAL (Parallelized) ===
-        auto start_signal_lap = std::chrono::high_resolution_clock::now();
-        processSignalQLCMS(
-            currentEventTracks4V.size(),
-            thread_count,
-            trkWeight, 
-            trkCharge,
-            currentEventTracks4V, 
-            h_qlcmsSSCor_signal_2l, 
-            h_qlcmsOSCor_signal_2l
-        );
-
-        auto end_signal_lap = std::chrono::high_resolution_clock::now();
-        duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
-    }
-    auto end_full = std::chrono::high_resolution_clock::now();
-    duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
-
-    std::cout << "#Processed Events(Sig): " << processedEventsSig << std::endl;
-    std::cout << "#Processed Events(Mix): " << processedEventsMix << std::endl;
-
-    // Save histograms
-    TCanvas *c_sig_cor_SS = new TCanvas("c_sig_cor_SS", "Signal Corrected Distributions", 1200, 800);
-    TCanvas *c_sig_cor_OS = new TCanvas("c_sig_cor_OS", "Signal Corrected Distributions", 1200, 800);
-    TCanvas *c_mix_cor_SS = new TCanvas("c_mix_cor_SS", "Mixing Corrected Distributions", 1200, 800);
-    TCanvas *c_mix_cor_OS = new TCanvas("c_mix_cor_OS", "Mixing Corrected Distributions", 1200, 800);
-
-    TLegend *legend_sig_cor_SS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_sig_cor_OS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_mix_cor_SS = new TLegend(0.7, 0.7, 0.9, 0.9);
-    TLegend *legend_mix_cor_OS = new TLegend(0.7, 0.7, 0.9, 0.9);
-
-    legend_sig_cor_SS->AddEntry(h_qlcmsSSCor_signal_2l, "Signal SS Cor - Double loop", "l");
-    legend_sig_cor_OS->AddEntry(h_qlcmsOSCor_signal_2l, "Signal OS Cor - Double loop", "l");
-    legend_mix_cor_SS->AddEntry(h_qlcmsSSCor_mix_2l, "Mix SS Cor- Double loop", "l");
-    legend_mix_cor_OS->AddEntry(h_qlcmsOSCor_mix_2l, "Mix OS Cor - Double loop", "l");
-
-    legend_sig_cor_SS->SetFillStyle(0); legend_sig_cor_SS->SetBorderSize(0);
-    legend_sig_cor_OS->SetFillStyle(0); legend_sig_cor_OS->SetBorderSize(0);
-    legend_mix_cor_SS->SetFillStyle(0); legend_mix_cor_SS->SetBorderSize(0);
-    legend_mix_cor_OS->SetFillStyle(0); legend_mix_cor_OS->SetBorderSize(0);
-
-    c_sig_cor_SS->cd(); gStyle->SetOptStat(0); h_qlcmsSSCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_SS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Signal SS Cor");
-    c_sig_cor_OS->cd(); gStyle->SetOptStat(0); h_qlcmsOSCor_signal_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_sig_cor_OS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Signal OS Cor");
-    c_mix_cor_SS->cd(); gStyle->SetOptStat(0); h_qlcmsSSCor_mix_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_mix_cor_SS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Mixing SS Cor");
-    c_mix_cor_OS->cd(); gStyle->SetOptStat(0); h_qlcmsOSCor_mix_2l->Draw("HIST PLC"); gStyle->SetPalette(kLake); legend_mix_cor_OS->Draw();
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Mixing OS Cor");
-
-    TH1D *histograms[] = {h_qlcmsSSCor_signal_2l, h_qlcmsOSCor_signal_2l, h_qlcmsSSCor_mix_2l, h_qlcmsOSCor_mix_2l};
-    Int_t numHistograms = 4;
-
-    TCanvas *canvases[] = {c_sig_cor_OS, c_sig_cor_SS, c_mix_cor_SS, c_mix_cor_OS};
-    int numCanvases = 4;
-
-    TLegend *legends[] = {legend_sig_cor_OS, legend_sig_cor_SS, legend_mix_cor_SS, legend_mix_cor_OS};
-    int numLegends = 4;
-
-    char prefix[100];
-    if (ptMax > 0){
-        if (ptMin > 0){
-            sprintf(prefix,
-                    "sig_qlcms_eta-%.2f-to-%.2f_pT-from-%.2f-to-%.2f_%s",
-                    etaMin, etaMax, ptMin, ptMax, selectionVarName);
-        } else {
-            sprintf(prefix,
-                    "sig_qlcms_eta-%.2f-to-%.2f_pT-to-%.2f_%s",
-                    etaMin, etaMax, ptMax, selectionVarName);
-        }
-    } else {
-        if (ptMin > 0){
-            sprintf(prefix,
-                    "sig_qlcms_eta-%.2f-to-%.2f_pT-from-%.2f_%s",
-                    etaMin, etaMax, ptMin, selectionVarName);
-        } else {
-            sprintf(prefix,
-                    "sig_qlcms_eta-%.2f-to-%.2f_%s",
-                    etaMin, etaMax, selectionVarName);
-        }
-    } 
-    const char *spath = "benchmarks";
-    std::vector<double> durations = {duration_full, duration_signal, duration_mix};
-    std::vector<std::string> labels = {"Total Time", "Signal Time", "Mix Time"};
-    save_benchmark_chrono(durations, labels, spath, prefix, processedEventsSig, processedEventsMix);
-    
-    const char *hpath = "./data/signal_mix/";
-    save_histograms(histograms, numHistograms, hpath, prefix, displaySelVarMoreeq, displaySelVarLess);
-
-    const char *ipath = "./imgs/test/signal_mix/";
-    const char *ifile_type = "png";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type);
-    const char *ifile_type2 = "pdf";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
-
-    AnalysisLog::instance().save("./logs", "makeSignalQLCMSParallelPtEta");
-    
-    close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
-}
-
-void sig_qtqzq0q(
-    const char *fileInput, 
-    const char *treeInput, 
-    double selVarMoreeq, 
-    double selVarLess, 
-    ControlVar selectionVarType = ControlVar::CENT,
-    Double_t ptMin = 0.5, 
-    Double_t ptMax = -1.0,
-    Double_t etaMin = -0.95,
-    Double_t etaMax = 0.95,  
-    int test_limit_sig = -1,
-    int test_limit_mix = -1,
-    Float_t vertexDistance = 2, 
-    Int_t pairChargeMult = 1, 
-    int poolSizeInt = 10) 
-{
-    // Load the ROOT file and tree
-    TFile *fr = nullptr;
-    TTree *t = nullptr;
-    getFileTree(fileInput, treeInput, fr, t);
-
-    // Variables from the tree
-    Int_t maxSize = 50000, Ntrk, hiBin, trkCharge[maxSize]; 
-    Float_t HFsumET, pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
-            pionMass = 0.13957039; // Pion mass [GeV] from PDG
-    
-    double* selectionVar, displaySelVarMoreeq, displaySelVarLess;
-    double hiBinProxy, NtrkProxy, HFsumETProxy;
-    int thread_count = std::thread::hardware_concurrency();
-
-    t->SetBranchAddress("HFsumET", &HFsumET);
-    t->SetBranchAddress("Ntrk", &Ntrk);
-    t->SetBranchAddress("hiBin", &hiBin);
-    t->SetBranchAddress("pvZ", &pvZ); 
-    t->SetBranchAddress("trkCharge", trkCharge);
-    t->SetBranchAddress("trkWeight", trkWeight);
-    t->SetBranchAddress("trkPt", trkPt);
-    t->SetBranchAddress("trkEta", trkEta);
-    t->SetBranchAddress("trkPhi", trkPhi);
-
-    const char * selectionVarName;
-
-    if (selectionVarType == ControlVar::CENT){
-        selectionVar = &hiBinProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selVarMoreeq = selVarMoreeq*2;
-        selVarLess = selVarLess*2;
-        selectionVarName = "CENT";
-    } else if (selectionVarType == ControlVar::MULT){
-        selectionVar = &NtrkProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "MULT";
-    } else if (selectionVarType == ControlVar::CENTHF){
-        selectionVar = &HFsumETProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "CENTHF";
-    } else {
-        std::cerr << "Invalid selection variable type!" << std::endl;
-        return;
-    }
-
-    // Getting how many entries
-    Long64_t nentries = t->GetEntries();
-    std::cout << "#Events: " << nentries << std::endl;
-    
-    int processedEventsSig = 0;
-    int processedEventsMix = 0;
-
-    // === HISTOGRAMS ===
-    double nnscale = 1000, x0 = 0., xt=0.02;
-
-    TH2D* h_qtqz_SS_cor = new TH2D("h_qtqz_SS_cor", "", nnscale, x0, xt, nnscale, x0, xt);
-    TH2D* h_qtqz_OS_cor = new TH2D("h_qtqz_OS_cor", "", nnscale, x0, xt, nnscale, x0, xt);
-    TH2D* h_q0q_SS_cor = new TH2D("h_q0q_SS_cor", "", nnscale, x0, xt, nnscale, x0, xt);
-    TH2D* h_q0q_OS_cor = new TH2D("h_q0q_OS_cor", "", nnscale, x0, xt, nnscale, x0, xt);
-
-    h_qtqz_SS_cor->Sumw2();
-    h_qtqz_OS_cor->Sumw2();
-    h_q0q_SS_cor->Sumw2();
-    h_q0q_OS_cor->Sumw2();
-    
-    h_qtqz_SS_cor->GetXaxis()->SetTitle("q_{t} [GeV]");
-    h_qtqz_SS_cor->GetYaxis()->SetTitle("q_{z} [GeV]");
-    h_qtqz_SS_cor->GetZaxis()->SetTitle("#Pairs");
-    h_qtqz_OS_cor->GetXaxis()->SetTitle("q_{t} [GeV]");
-    h_qtqz_OS_cor->GetYaxis()->SetTitle("q_{z} [GeV]");
-    h_qtqz_OS_cor->GetZaxis()->SetTitle("#Pairs");
-    h_q0q_SS_cor->GetXaxis()->SetTitle("q_{0} [GeV]");
-    h_q0q_SS_cor->GetYaxis()->SetTitle("|#vec{q}| [GeV]");
-    h_q0q_SS_cor->GetZaxis()->SetTitle("#Pairs");
-    h_q0q_OS_cor->GetXaxis()->SetTitle("q_{0} [GeV]");
-    h_q0q_OS_cor->GetYaxis()->SetTitle("|#vec{q}| [GeV]");
-    h_q0q_OS_cor->GetZaxis()->SetTitle("#Pairs");
-
-    double duration_full = 0.0, duration_mix = 0.0, duration_signal = 0.0;
-
-    std::vector<std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>>> vectorEventTracks4V;
-    std::vector<std::vector<Int_t>> vectorEventTracksCharge;
-    std::vector<std::vector<Float_t>> vectorEventTracksWeight;
-    std::vector<std::vector<Float_t>> vectorEventTracksPt;
-    
-    size_t poolSize = static_cast<size_t>(poolSizeInt);
-
-    std::cout << "Processing " << fileInput << "/" << treeInput << " events with centrality from " << displaySelVarMoreeq << " to " << displaySelVarLess << std::endl;
-    auto start_full = std::chrono::high_resolution_clock::now();
-    for (Long64_t i = 0; i < nentries; i++){
-        t->GetEntry(i);
-        
-        hiBinProxy = hiBin;
-        NtrkProxy = Ntrk;
-        HFsumETProxy = HFsumET;
-        
-        if (processedEventsSig == test_limit_sig) break;
-        if (processedEventsMix == test_limit_mix) break;
-        if (!(selVarMoreeq <= *selectionVar && *selectionVar < selVarLess)) continue;
-        processedEventsSig++;
-        
-        std::vector<ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>> currentEventTracks4V;
-        std::vector<Int_t> currentEventTracksCharge;
-        std::vector<Float_t> currentEventTracksWeight;
-        std::vector<Float_t> currentEventTracksPt;
-
-        for (int j = 0; j < Ntrk; j++) {
-            ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>> currentTrack4V(trkPt[j], trkEta[j], trkPhi[j], pionMass);
-            currentEventTracks4V.push_back(currentTrack4V);
-            currentEventTracksCharge.push_back(trkCharge[j]);
-            currentEventTracksWeight.push_back(trkWeight[j]);
-            currentEventTracksPt.push_back(trkPt[j]);
-        }
-        
-        
-        // === SIGNAL (Parallelized) ===
-        auto start_signal_lap = std::chrono::high_resolution_clock::now();
-        processSignalqtqzq0q(
-            currentEventTracks4V.size(),
-            thread_count,
-            trkWeight, 
-            trkCharge,
-            currentEventTracks4V, 
-            h_qtqz_SS_cor, 
-            h_qtqz_OS_cor, 
-            h_q0q_SS_cor, 
-            h_q0q_OS_cor
-        );
-
-        auto end_signal_lap = std::chrono::high_resolution_clock::now();
-        duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
-    }
-    auto end_full = std::chrono::high_resolution_clock::now();
-    duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
-
-    std::cout << "#Processed Events(Sig): " << processedEventsSig << std::endl;
-
-    // Save histograms
-    TCanvas *c_sig_qtqz_cor_SS = new TCanvas("c_sig_qtqz_cor_SS", "Signal Distributions", 1200, 800);
-    TCanvas *c_sig_qtqz_cor_OS = new TCanvas("c_sig_qtqz_cor_OS", "Signal Distributions", 1200, 800);
-    TCanvas *c_sig_q0q_cor_SS = new TCanvas("c_sig_q0q_cor_SS", "Signal Distributions", 1200, 800);
-    TCanvas *c_sig_q0q_cor_OS = new TCanvas("c_sig_q0q_cor_OS", "Signal Distributions", 1200, 800);
-
-    c_sig_qtqz_cor_SS->cd(); gStyle->SetOptStat(0); h_qtqz_SS_cor->Draw("COLZ"); gStyle->SetPalette(kLake);
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Signal SS Cor | (q_{t}, q_{z})");
-    c_sig_qtqz_cor_OS->cd(); gStyle->SetOptStat(0); h_qtqz_OS_cor->Draw("COLZ"); gStyle->SetPalette(kLake);
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Signal OS Cor | (q_{t}, q_{z})");
-    c_sig_q0q_cor_SS->cd(); gStyle->SetOptStat(0); h_q0q_SS_cor->Draw("COLZ"); gStyle->SetPalette(kLake);
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Signal SS Cor | (q_{0}, q_{q})");
-    c_sig_q0q_cor_OS->cd(); gStyle->SetOptStat(0); h_q0q_OS_cor->Draw("COLZ"); gStyle->SetPalette(kLake);
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | Signal OS Cor | (q_{0}, q_{q})");
-
-    TH2D *histograms[] = {h_qtqz_SS_cor, h_qtqz_OS_cor, h_q0q_SS_cor, h_q0q_OS_cor};
-    Int_t numHistograms = 4;
-
-    TCanvas *canvases[] = {c_sig_qtqz_cor_SS, c_sig_qtqz_cor_OS, c_sig_q0q_cor_OS, c_sig_q0q_cor_SS};
-    int numCanvases = 4;
-
-    TLegend *legends[] = {};
-    int numLegends = 0;
-
-    char prefix[100];
-    if (ptMax > 0){
-        if (ptMin > 0){
-            sprintf(prefix, "sig_qtqzq0q_eta-%f-to-%f_pT-from-%f-to-%f_%s_%f-%f", etaMin, etaMax, ptMin, ptMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
-        } else {
-            sprintf(prefix, "sig_qtqzq0q_eta-%f-to-%f_pT-to-%f_%s_%f-%f", etaMin, etaMax, ptMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
-        }
-    } else {
-        if (ptMin > 0){
-            sprintf(prefix, "sig_qtqzq0q_eta-%f-to-%f_pT-from-%f_%s_%f-%f", etaMin, etaMax, ptMin, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
-        } else {
-            sprintf(prefix, "sig_qtqzq0q_eta-%f-to-%f_%s_%f-%f", etaMin, etaMax, selectionVarName, displaySelVarMoreeq, displaySelVarLess);
-        }
-    } 
-    const char *spath = "benchmarks";
-    std::vector<double> durations = {duration_full, duration_signal, duration_mix};
-    std::vector<std::string> labels = {"Total Time", "Signal Time", "Mix Time"};
-    save_benchmark_chrono(durations, labels, spath, prefix, processedEventsSig, processedEventsMix);
-    
-    const char *hpath = "./data/signal_mix/";
-    save_histograms2d(histograms, numHistograms, hpath, prefix, displaySelVarMoreeq, displaySelVarLess);
-
-    const char *ipath = "./imgs/test/signal_mix/";
-    const char *ifile_type = "png";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type);
-    const char *ifile_type2 = "pdf";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, ifile_type2);
-
-    AnalysisLog::instance().save("./logs", "makeSignalqtqzq0qParallelPtEta");
-    
-    close_program(canvases, numCanvases, histograms, numHistograms, legends, numLegends, fr);     
-}
-
-void sig_DeltaEtaDeltaPhi(
-    const char *fileInput, 
-    const char *treeInput, 
-    double selVarMoreeq, 
-    double selVarLess, 
-    ControlVar selectionVarType = ControlVar::CENT,
-    Float_t ptMin = 0.5, Float_t ptMax = -1.0,
-    Float_t etaCut = 0.95,
-    Float_t pixHit = 1, Float_t trkHit = 10,
-    Float_t chi2 = 0.18,
-    Float_t dzSig = 3.0, Float_t dxySig = 3.0,  
-    int test_limit_sig = -1, int test_limit_mix = -1,
-    Float_t vertexDistance = 15, 
-    Int_t pairChargeMult = 1, 
-    int poolSizeInt = 10) 
-{
-    // Load the ROOT file and tree
-    TFile *fr = nullptr;
-    TTree *t = nullptr;
-    getFileTree(fileInput, treeInput, fr, t);
-
-    // Variables from the tree
-    Int_t maxSize = 50000, Ntrk, Npv, hiBin, trkCharge[maxSize]; 
-    Float_t HFsumET, pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
-            trkNpixLayers[maxSize], trkNvalidHits[maxSize], trkNormChi2[maxSize],
-            trkDzSig[maxSize], trkDxySig[maxSize], pionMass = 0.13957039; // Pion mass [GeV] from PDG
-    
-    double* selectionVar, displaySelVarMoreeq, displaySelVarLess;
-    double hiBinProxy, NtrkProxy, HFsumETProxy;
-    int thread_count = std::thread::hardware_concurrency();
-
-    t->SetBranchAddress("HFsumET", &HFsumET);
-    t->SetBranchAddress("Ntrk", &Ntrk);
-    t->SetBranchAddress("Npv", &Npv);
-    t->SetBranchAddress("hiBin", &hiBin);
-    t->SetBranchAddress("pvZ", &pvZ);
-    t->SetBranchAddress("trkNpixLayers", trkNpixLayers);
-    t->SetBranchAddress("trkCharge", trkCharge);
-    t->SetBranchAddress("trkWeight", trkWeight);
-    t->SetBranchAddress("trkPt", trkPt);
-    t->SetBranchAddress("trkEta", trkEta);
-    t->SetBranchAddress("trkPhi", trkPhi);
-    t->SetBranchAddress("trkNvalidHits", trkNvalidHits);
-    t->SetBranchAddress("trkNormChi2", trkNormChi2);
-    t->SetBranchAddress("trkDzSig", trkDzSig);
-    t->SetBranchAddress("trkDxySig", trkDxySig);
-
-    const char * selectionVarName;
-
-    if (selectionVarType == ControlVar::CENT){
-        selectionVar = &hiBinProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selVarMoreeq = selVarMoreeq*2;
-        selVarLess = selVarLess*2;
-        selectionVarName = "CENT";
-    } else if (selectionVarType == ControlVar::MULT){
-        selectionVar = &NtrkProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "MULT";
-    } else if (selectionVarType == ControlVar::CENTHF){
-        selectionVar = &HFsumETProxy;
-        displaySelVarMoreeq = selVarMoreeq;
-        displaySelVarLess = selVarLess;
-        selectionVarName = "CENTHF";
-    } else {
-        std::cerr << "Invalid selection variable type!" << std::endl;
-        return;
-    }
-
-    // Getting how many entries
-    Long64_t nentries = t->GetEntries();
-    std::cout << "#Events: " << nentries << std::endl;
-    
-    int processedEventsSig = 0;
-    int processedEventsMix = 0;
-
-    // === HISTOGRAMS ===
-    double nnscale = 100, x0 = 0., xt=0.15;
-
-    TH2D* hSigSS_DeltaEtaDeltaPhi = new TH2D("hSigSS_DeltaEtaDeltaPhi", "", nnscale, x0, xt, nnscale, x0, xt);
-    TH2D* hMixSS_DeltaEtaDeltaPhi = new TH2D("hMixSS_DeltaEtaDeltaPhi", "", nnscale, x0, xt, nnscale, x0, xt);
-
-    hSigSS_DeltaEtaDeltaPhi->Sumw2();
-    hMixSS_DeltaEtaDeltaPhi->Sumw2();
-    
-    hSigSS_DeltaEtaDeltaPhi->GetXaxis()->SetTitle("#Delta#eta");
-    hMixSS_DeltaEtaDeltaPhi->GetXaxis()->SetTitle("#Delta#eta");
-    hSigSS_DeltaEtaDeltaPhi->GetYaxis()->SetTitle("#Delta#varphi");
-    hMixSS_DeltaEtaDeltaPhi->GetYaxis()->SetTitle("#Delta#varphi");
-    hSigSS_DeltaEtaDeltaPhi->GetZaxis()->SetTitle("#Pairs");
-    hMixSS_DeltaEtaDeltaPhi->GetZaxis()->SetTitle("#Pairs");
-    
-    double duration_full = 0.0, duration_mix = 0.0, duration_signal = 0.0;
-
-    // 10 buckets for Z-vertex (e.g. -15 to +15 into 3cm bins)
-    std::vector<EventData> pool[10]; 
-    size_t poolSize = static_cast<size_t>(poolSizeInt);
-
-    std::cout << "Processing " << fileInput << "/" << treeInput << " events with centrality from " << displaySelVarMoreeq << " to " << displaySelVarLess << std::endl;
-    auto start_full = std::chrono::high_resolution_clock::now();
-    for (Long64_t i = 0; i < nentries; i++){
-        t->GetEntry(i);
-        
-        if (i % 100 == 0 || i == nentries - 1) {
-            printProgressBar(i + 1, nentries);
-        }
-        
-        hiBinProxy = hiBin; NtrkProxy = Ntrk; HFsumETProxy = HFsumET;
-        
-        if (processedEventsSig == test_limit_sig || processedEventsMix == test_limit_mix) break;
-        if (!(selVarMoreeq <= *selectionVar && *selectionVar < selVarLess)) continue;
-        //if (Npv != 1) continue;
-        if (std::abs(pvZ) >= vertexDistance) continue;
-        int zBin = (int)((pvZ + vertexDistance) / ((vertexDistance * 2.0) / 10.0));
-        if (zBin < 0) zBin = 0; if (zBin > 9) zBin = 9;
-        
-        EventData currentEv;
-        for (int j = 0; j < Ntrk; j++) {
-            // Kinematic cuts
-            if (ptMax < 0){
-                if (trkPt[j] < ptMin) continue;
-            } else {
-                if (!(trkPt[j] > ptMin && trkPt[j] < ptMax)) continue;
+    // --- QtQzQ0Q Processes (Signal Only for 2D) ---
+    void processSignalQtQzQ0Q(int thread_count, const EventData& currentEv, TH2D* hQtQzSS, TH2D* hQ0QSS) {
+        size_t n_tracks = currentEv.tracks.size();
+        if (n_tracks <= 1) return;
+        if (thread_count == 0) thread_count = 1;
+
+        struct LocalHistograms {
+            TH2D *qtqz, *q0q;
+            LocalHistograms(const TH2D* base1, const TH2D* base2) {
+                qtqz = (TH2D*)base1->Clone(TString::Format("%s_clone_%p", base1->GetName(), this));
+                q0q = (TH2D*)base2->Clone(TString::Format("%s_clone_%p", base2->GetName(), this));
+                qtqz->Reset(); q0q->Reset();
             }
-            
-            if (std::abs(trkEta[j]) > etaCut) continue;
-            
-            // Quality cuts (Hits and Chi2)
-            if (trkNpixLayers[j] <= pixHit) continue;
-            //if (trkNvalidHits[j] <= trkHit) continue;
-            //if (trkNormChi2[j] >= chi2) continue;
-            
-            // DCA cuts (Distance of Closest Approach)
-            if (std::abs(trkDzSig[j]) >= dzSig) continue;
-            //if (std::abs(trkDxySig[j]) >= dxySig) continue;
-            
-            // Check for bugs
-            if (std::isinf(trkWeight[j])) continue;
-            
-            currentEv.tracks.push_back(ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>(trkPt[j], trkEta[j], trkPhi[j], pionMass));
-            currentEv.charges.push_back(trkCharge[j]);
+            ~LocalHistograms() { delete qtqz; delete q0q; }
+        };
+
+        std::vector<std::thread> threads;
+        std::vector<std::unique_ptr<LocalHistograms>> local_hists;
+        for (int i = 0; i < thread_count; ++i) local_hists.push_back(std::make_unique<LocalHistograms>(hQtQzSS, hQ0QSS));
+
+        auto thread_task = [&](size_t start, size_t end, LocalHistograms* lh) {
+            for (size_t p1 = start; p1 < end; p1++) {
+                for (size_t p2 = p1 + 1; p2 < n_tracks; p2++) {
+                    if (currentEv.charges[p1] * currentEv.charges[p2] > 0) { // SS Only
+                        auto tp1 = currentEv.tracks[p1];
+                        auto tp2 = currentEv.tracks[p2];
+                        auto K = 0.5 * (tp1 + tp2);
+                        ROOT::Math::BoostZ boost(-K.Pz() / K.E());
+                        auto tp1_lcms = boost(tp1);
+                        auto tp2_lcms = boost(tp2);
+                        auto q = tp1_lcms - tp2_lcms;
+
+                        double q0 = q.E();
+                        double qz = q.Pz();
+                        double qt = std::sqrt(q.Px()*q.Px() + q.Py()*q.Py());
+                        double qabs = std::sqrt(qt*qt + qz*qz);
+
+                        lh->qtqz->Fill(qt, qz, currentEv.weights[p1] * currentEv.weights[p2]);
+                        lh->q0q->Fill(q0, qabs, currentEv.weights[p1] * currentEv.weights[p2]);
+                    }
+                }
+            }
+        };
+
+        size_t chunk = n_tracks / thread_count;
+        for (int t = 0; t < thread_count; t++) {
+            size_t start = t * chunk;
+            size_t end = (t == thread_count - 1) ? n_tracks : (t + 1) * chunk;
+            threads.emplace_back(thread_task, start, end, local_hists[t].get());
         }
-        if (currentEv.tracks.size() < 2) continue;
-        processedEventsSig++;
-
-        // === MIXING ===
-        auto start_mix_lap = std::chrono::high_resolution_clock::now();
-        if (!pool[zBin].empty()) {
-            processMixDeltaEtaDeltaPhi(thread_count, currentEv, pool[zBin], hMixSS_DeltaEtaDeltaPhi);
-            processedEventsMix++;
-        }
-        auto end_mix_lap = std::chrono::high_resolution_clock::now();
-        duration_mix += std::chrono::duration_cast<std::chrono::duration<double>>(end_mix_lap - start_mix_lap).count();
-
-        // === SIGNAL ===
-        auto start_signal_lap = std::chrono::high_resolution_clock::now();
-
-        processSignalDeltaEtaDeltaPhi(thread_count, currentEv, hSigSS_DeltaEtaDeltaPhi);
-        auto end_signal_lap = std::chrono::high_resolution_clock::now();
-        duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
-
-        // === UPDATE POOL ===
-        pool[zBin].push_back(currentEv);
-        if (pool[zBin].size() > poolSize) {
-            pool[zBin].erase(pool[zBin].begin());
+        for (auto& t : threads) t.join();
+        for (auto& lh : local_hists) {
+            hQtQzSS->Add(lh->qtqz);
+            hQ0QSS->Add(lh->q0q);
         }
     }
-    auto end_full = std::chrono::high_resolution_clock::now();
-    duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
 
-    std::cout << "#Processed Events(Sig): " << processedEventsSig << std::endl;
-    std::cout << "#Processed Events(Mix): " << processedEventsMix << std::endl;
+public:
+    Process(InputParams in, AnalysisParams out) : inputs(in), cfg(out) {}
 
-    // Save histograms
-    TCanvas *cSigSS_DeltaEtaDeltaPhi = new TCanvas("cSigSS_DeltaEtaDeltaPhi", "SignalSS  #Delta#eta-#Delta#varphi", 1200, 800);
-    TCanvas *cMixSS_DeltaEtaDeltaPhi = new TCanvas("cMixSS_DeltaEtaDeltaPhi", "MixedSS  #Delta#eta-#Delta#varphi", 1200, 800);
+    // ----- DeltaEta-DeltaPhi Analysis (2D) -----
+    void buildDeltaEtaDeltaPhi() 
+    {
+        // ----- INITIALIZATION & DATA LOADING -----
+        TFile *fr = nullptr; TTree *t = nullptr;
+        getFileTree(inputs.fileInput.c_str(), inputs.treeInput.c_str(), fr, t);
 
-    gStyle->SetOptStat(0);
-    gStyle->SetPalette(kLake);
+        Int_t maxSize = 50000, Ntrk, hiBin, trkCharge[maxSize]; 
+        Float_t pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
+                trkNpixLayers[maxSize], pionMass = 0.13957039;
+        Float_t HFsumET; 
 
-    // Signal
-    cSigSS_DeltaEtaDeltaPhi->cd();
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}","PbPb 2.76 TeV | Signal SS | (#Delta#eta, #Delta#varphi)");
-    hSigSS_DeltaEtaDeltaPhi->Draw("COLZ");
+        t->SetBranchAddress("HFsumET", &HFsumET);
+        t->SetBranchAddress("Ntrk", &Ntrk);
+        t->SetBranchAddress("hiBin", &hiBin);
+        t->SetBranchAddress("pvZ", &pvZ); 
+        t->SetBranchAddress("trkNpixLayers", trkNpixLayers);
+        t->SetBranchAddress("trkCharge", trkCharge);
+        t->SetBranchAddress("trkWeight", trkWeight);
+        t->SetBranchAddress("trkPt", trkPt);
+        t->SetBranchAddress("trkEta", trkEta);
+        t->SetBranchAddress("trkPhi", trkPhi);
 
-    // Mixed
-    cMixSS_DeltaEtaDeltaPhi->cd();
-    drawCMSHeaders("#bf{CMS} #it{Work in Progress}","PbPb 2.76 TeV | Mixed SS | (#Delta#eta, #Delta#varphi)");
-    hMixSS_DeltaEtaDeltaPhi->Draw("COLZ");
-    
+        // ----- SELECTION VARIABLE SETUP -----
+        double hiBinProxy, NtrkProxy, HFsumETProxy;
+        double* selectionVar;
+        double displayMoreeq = cfg.selVarMoreeq, displayLess = cfg.selVarLess;
+        const char* selectionVarName;
 
-    TH2D *histograms[] = {
-        hSigSS_DeltaEtaDeltaPhi, 
-        hMixSS_DeltaEtaDeltaPhi
-    };
-    Int_t numHistograms = 2;
-
-    TCanvas *canvases[] = {
-        cSigSS_DeltaEtaDeltaPhi, 
-        cMixSS_DeltaEtaDeltaPhi
-    };
-    Int_t numCanvases = 2;
-
-    TLegend *legends[] = {};
-    Int_t numLegends = 0;
-
-
-    char prefix[256];
-
-    if (ptMax > 0) {
-        if (ptMin > 0) {
-            sprintf(prefix,
-                    "DeltaEtaDeltaPhi_eta-abs%g_pT-%g-to-%g_%s_%g-%g",
-                    etaCut, ptMin, ptMax,
-                    selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+        if (cfg.selectionVarType == ControlVar::CENT) {
+            selectionVar = &hiBinProxy; cfg.selVarMoreeq *= 2; cfg.selVarLess *= 2; selectionVarName = "CENT";
+        } else if (cfg.selectionVarType == ControlVar::MULT) {
+            selectionVar = &NtrkProxy; selectionVarName = "MULT";
         } else {
-            sprintf(prefix,
-                    "DeltaEtaDeltaPhi_eta-abs%g_pT-to-%g_%s_%g-%g",
-                    etaCut, ptMax,
-                    selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+            selectionVar = &HFsumETProxy; selectionVarName = "CENTHF";
         }
-    } else {
-        if (ptMin > 0) {
-            sprintf(prefix,
-                    "DeltaEtaDeltaPhi_eta-abs%g_pT-from-%g_%s_%g-%g",
-                    etaCut, ptMin,
-                    selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+
+        // ----- BINS & POOL SETUP -----
+        int nZBins = static_cast<int>(std::ceil((cfg.vertexDistance * 2.0) / cfg.zBinWidth));
+        std::vector<std::vector<EventData>> pool(nZBins);
+        size_t poolSize = static_cast<size_t>(cfg.poolSizeInt);
+
+        // ----- HISTOGRAMS & TIMING SETUP -----
+        double nnscale = 100, x0 = 0., xt = 0.1;
+        double duration_full = 0.0, duration_mix = 0.0, duration_signal = 0.0;
+        TH2D* hSigSS = new TH2D("hSigSS", ";#Delta#eta;#Delta#varphi;#Pairs", nnscale, x0, xt, nnscale, x0, xt);
+        TH2D* hMixSS = new TH2D("hMixSS", ";#Delta#eta;#Delta#varphi;#Pairs", nnscale, x0, xt, nnscale, x0, xt);
+        hSigSS->Sumw2(); hMixSS->Sumw2();
+
+        Long64_t nentries = t->GetEntries();
+        int processedEventsSig = 0, processedEventsMix = 0, thread_count = std::thread::hardware_concurrency();
+
+        // ----- MAIN EVENT LOOP -----
+        auto start_full = std::chrono::high_resolution_clock::now();
+        for (Long64_t i = 0; i < nentries; i++) {
+            t->GetEntry(i);
+            if (i % 500 == 0) printProgressBar(i + 1, nentries);
+
+            hiBinProxy = (double)hiBin; NtrkProxy = (double)Ntrk; HFsumETProxy = (double)HFsumET;
+
+            // ----- Processing Limit Check -----
+            bool sigLimitReached = cfg.useTestLimitSig && (processedEventsSig >= cfg.testLimitSig);
+            bool mixLimitReached = cfg.useTestLimitMix && (processedEventsMix >= cfg.testLimitMix);
+            if (sigLimitReached || mixLimitReached) break;
+
+            // ----- Event-level filters -----
+            if (!(*selectionVar >= cfg.selVarMoreeq && *selectionVar < cfg.selVarLess)) continue;
+            if (std::abs(pvZ) >= cfg.vertexDistance) continue;
+
+            // ----- Z-Bin calculation -----
+            int zBin = (int)((pvZ + cfg.vertexDistance) / cfg.zBinWidth);
+            if (zBin < 0) zBin = 0; if (zBin >= nZBins) zBin = nZBins - 1;
+
+            EventData currentEv;
+            for (int j = 0; j < Ntrk; j++) {
+                if (cfg.usePtMin  && (trkPt[j] < cfg.ptMin)) continue;
+                if (cfg.usePtMax  && (trkPt[j] > cfg.ptMax)) continue;
+                if (cfg.useEtaCut && (std::abs(trkEta[j]) > cfg.etaCut)) continue;
+                if (cfg.usePixHit && (trkNpixLayers[j] < cfg.pixHit)) continue;
+                if (std::isinf(trkWeight[j])) continue;
+
+                currentEv.tracks.push_back(ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>(trkPt[j], trkEta[j], trkPhi[j], pionMass));
+                currentEv.weights.push_back(trkWeight[j]);
+                currentEv.charges.push_back(trkCharge[j]);
+            }
+
+            if (currentEv.tracks.size() < 2) continue;
+            processedEventsSig++;
+
+            // ----- Mixing processing -----
+            auto start_mix_lap = std::chrono::high_resolution_clock::now();
+            if (!pool[zBin].empty()) {
+                processMixDeltaEtaDeltaPhi(thread_count, currentEv, pool[zBin], hMixSS);
+                processedEventsMix++;
+            }
+            auto end_mix_lap = std::chrono::high_resolution_clock::now();
+            duration_mix += std::chrono::duration_cast<std::chrono::duration<double>>(end_mix_lap - start_mix_lap).count();
+
+            // ----- Signal processing -----
+            auto start_signal_lap = std::chrono::high_resolution_clock::now();
+            processSignalDeltaEtaDeltaPhi(thread_count, currentEv, hSigSS);
+            auto end_signal_lap = std::chrono::high_resolution_clock::now();
+            duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
+
+            // ----- Pool Update -----
+            pool[zBin].push_back(currentEv);
+            if (pool[zBin].size() > poolSize) pool[zBin].erase(pool[zBin].begin());
+        }
+        auto end_full = std::chrono::high_resolution_clock::now();
+        duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
+
+        // ----- SAVING -----
+        char prefix[256];
+        sprintf(prefix, "DeltaEtaDeltaPhi_eta-abs%g_%s_%g-%g", cfg.etaCut, selectionVarName, displayMoreeq, displayLess);
+        
+        TCanvas *cSig = new TCanvas("cSig","",1200,800);
+        TCanvas *cMix = new TCanvas("cMix","",1200,800);
+        TH2D *hists[] = {hSigSS, hMixSS};
+        
+        cSig->cd(); drawCMSHeaders("#bf{CMS} #it{Work in Progress}","PbPb 2.76 TeV | Signal SS | (#Delta#eta, #Delta#varphi)"); hSigSS->Draw("COLZ");
+        cMix->cd(); drawCMSHeaders("#bf{CMS} #it{Work in Progress}","PbPb 2.76 TeV | Mixed SS | (#Delta#eta, #Delta#varphi)"); hMixSS->Draw("COLZ");
+
+        save_benchmark_chrono({duration_full, duration_signal, duration_mix}, {"Total", "Signal", "Mix"}, "benchmarks", prefix, processedEventsSig, processedEventsMix);
+        save_histograms2d(hists, 2, "./data/signal_mix/", prefix, displayMoreeq, displayLess);
+        AnalysisLog::instance().save("./logs", "sig_DeltaEtaDeltaPhi");
+        close_program(new TCanvas*[2]{cSig, cMix}, 2, hists, 2, nullptr, 0, fr);
+    }
+
+    // ----- Q-Invariant Analysis (1D) -----
+    void buildQinv() 
+    {
+        // ----- INITIALIZATION & DATA LOADING -----
+        TFile *fr = nullptr; TTree *t = nullptr;
+        getFileTree(inputs.fileInput.c_str(), inputs.treeInput.c_str(), fr, t);
+
+        Int_t maxSize = 50000, Ntrk, hiBin, trkCharge[maxSize]; 
+        Float_t pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
+                trkNpixLayers[maxSize], pionMass = 0.13957039;
+        Float_t HFsumET; 
+
+        t->SetBranchAddress("HFsumET", &HFsumET);
+        t->SetBranchAddress("Ntrk", &Ntrk);
+        t->SetBranchAddress("hiBin", &hiBin);
+        t->SetBranchAddress("pvZ", &pvZ); 
+        t->SetBranchAddress("trkNpixLayers", trkNpixLayers);
+        t->SetBranchAddress("trkCharge", trkCharge);
+        t->SetBranchAddress("trkWeight", trkWeight);
+        t->SetBranchAddress("trkPt", trkPt);
+        t->SetBranchAddress("trkEta", trkEta);
+        t->SetBranchAddress("trkPhi", trkPhi);
+
+        // ----- SELECTION VARIABLE SETUP -----
+        double hiBinProxy, NtrkProxy, HFsumETProxy;
+        double* selectionVar;
+        double displayMoreeq = cfg.selVarMoreeq, displayLess = cfg.selVarLess;
+        const char* selectionVarName;
+
+        if (cfg.selectionVarType == ControlVar::CENT) {
+            selectionVar = &hiBinProxy; cfg.selVarMoreeq *= 2; cfg.selVarLess *= 2; selectionVarName = "CENT";
+        } else if (cfg.selectionVarType == ControlVar::MULT) {
+            selectionVar = &NtrkProxy; selectionVarName = "MULT";
         } else {
-            sprintf(prefix,
-                    "DeltaEtaDeltaPhi_eta-abs%g_%s_%g-%g",
-                    etaCut,
-                    selectionVarName, displaySelVarMoreeq, displaySelVarLess);
+            selectionVar = &HFsumETProxy; selectionVarName = "CENTHF";
         }
+
+        // ----- BINS & POOL SETUP -----
+        int nZBins = static_cast<int>(std::ceil((cfg.vertexDistance * 2.0) / cfg.zBinWidth));
+        std::vector<std::vector<EventData>> pool(nZBins);
+        size_t poolSize = static_cast<size_t>(cfg.poolSizeInt);
+
+        // ----- HISTOGRAMS & TIMING SETUP -----
+        double duration_full = 0.0, duration_mix = 0.0, duration_signal = 0.0;
+        double nnscale = 10000, x0 = 0., xt = 10.;
+        
+        TH1D* hSigSS = new TH1D("hSigSS", ";q_{inv} [GeV];#Pairs", nnscale, x0, xt);
+        TH1D* hMixSS = new TH1D("hMixSS", ";q_{inv} [GeV];#Pairs", nnscale, x0, xt);
+        hSigSS->Sumw2(); hMixSS->Sumw2();
+
+        Long64_t nentries = t->GetEntries();
+        int processedEventsSig = 0, processedEventsMix = 0, thread_count = std::thread::hardware_concurrency();
+
+        // ----- MAIN EVENT LOOP -----
+        auto start_full = std::chrono::high_resolution_clock::now();
+        for (Long64_t i = 0; i < nentries; i++) {
+            t->GetEntry(i);
+            if (i % 500 == 0) printProgressBar(i + 1, nentries);
+
+            hiBinProxy = (double)hiBin; NtrkProxy = (double)Ntrk; HFsumETProxy = (double)HFsumET;
+
+            // ----- Processing Limit Check -----
+            bool sigLimitReached = cfg.useTestLimitSig && (processedEventsSig >= cfg.testLimitSig);
+            bool mixLimitReached = cfg.useTestLimitMix && (processedEventsMix >= cfg.testLimitMix);
+            if (sigLimitReached || mixLimitReached) break;
+
+            // ----- Event-level filters -----
+            if (!(*selectionVar >= cfg.selVarMoreeq && *selectionVar < cfg.selVarLess)) continue;
+            if (std::abs(pvZ) >= cfg.vertexDistance) continue;
+
+            // ----- Z-Bin calculation -----
+            int zBin = (int)((pvZ + cfg.vertexDistance) / cfg.zBinWidth);
+            if (zBin < 0) zBin = 0; if (zBin >= nZBins) zBin = nZBins - 1;
+
+            EventData currentEv;
+            for (int j = 0; j < Ntrk; j++) {
+                if (cfg.usePtMin  && (trkPt[j] < cfg.ptMin)) continue;
+                if (cfg.usePtMax  && (trkPt[j] > cfg.ptMax)) continue;
+                if (cfg.useEtaCut && (std::abs(trkEta[j]) > cfg.etaCut)) continue;
+                if (cfg.usePixHit && (trkNpixLayers[j] < cfg.pixHit)) continue;
+                if (std::isinf(trkWeight[j])) continue;
+
+                currentEv.tracks.push_back(ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>(trkPt[j], trkEta[j], trkPhi[j], pionMass));
+                currentEv.weights.push_back(trkWeight[j]);
+                currentEv.charges.push_back(trkCharge[j]);
+            }
+
+            if (currentEv.tracks.size() < 2) continue;
+            processedEventsSig++;
+
+            // ----- Mixing processing -----
+            auto start_mix_lap = std::chrono::high_resolution_clock::now();
+            if (!pool[zBin].empty()) {
+                processMixQinv(thread_count, currentEv, pool[zBin], hMixSS);
+                processedEventsMix++;
+            }
+            auto end_mix_lap = std::chrono::high_resolution_clock::now();
+            duration_mix += std::chrono::duration_cast<std::chrono::duration<double>>(end_mix_lap - start_mix_lap).count();
+
+            // ----- Signal processing -----
+            auto start_signal_lap = std::chrono::high_resolution_clock::now();
+            processSignalQinv(thread_count, currentEv, hSigSS);
+            auto end_signal_lap = std::chrono::high_resolution_clock::now();
+            duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
+
+            // ----- Pool Update -----
+            pool[zBin].push_back(currentEv);
+            if (pool[zBin].size() > poolSize) pool[zBin].erase(pool[zBin].begin());
+        }
+        auto end_full = std::chrono::high_resolution_clock::now();
+        duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
+
+        // ----- SAVING -----
+        char prefix[256];
+        sprintf(prefix, "qinv_eta-abs%g_%s_%g-%g", cfg.etaCut, selectionVarName, displayMoreeq, displayLess);
+        TH1D *hists[] = {hSigSS, hMixSS};
+        save_benchmark_chrono({duration_full, duration_signal, duration_mix}, {"Total", "Signal", "Mix"}, "benchmarks", prefix, processedEventsSig, processedEventsMix);
+        save_histograms(hists, 2, "./data/signal_mix/", prefix, displayMoreeq, displayLess);
+        AnalysisLog::instance().save("./logs", "sig_qinv");
+        close_program(nullptr, 0, hists, 2, nullptr, 0, fr);
     }
 
-    const char *spath = "benchmarks";
-    std::vector<double> durations = {duration_full, duration_signal, duration_mix};
-    std::vector<std::string> labels = {"Total Time", "Signal Time", "Mix Time"};
-    save_benchmark_chrono(durations, labels, spath, prefix,
-                          processedEventsSig, processedEventsMix);
+    // ----- Q-LCMS Analysis (1D) -----
+    void buildQlcms() 
+    {
+        // ----- INITIALIZATION & DATA LOADING -----
+        TFile *fr = nullptr; TTree *t = nullptr;
+        getFileTree(inputs.fileInput.c_str(), inputs.treeInput.c_str(), fr, t);
 
-    const char *hpath = "./data/signal_mix/";
-    save_histograms2d(histograms, numHistograms, hpath,
-                    prefix, displaySelVarMoreeq, displaySelVarLess);
+        Int_t maxSize = 50000, Ntrk, hiBin, trkCharge[maxSize]; 
+        Float_t pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
+                trkNpixLayers[maxSize], pionMass = 0.13957039;
+        Float_t HFsumET; 
 
-    const char *ipath = "./imgs/test/signal_mix/";
-    save_canvas_images(canvases, numCanvases, ipath, prefix, "png");
-    save_canvas_images(canvases, numCanvases, ipath, prefix, "pdf");
+        t->SetBranchAddress("HFsumET", &HFsumET);
+        t->SetBranchAddress("Ntrk", &Ntrk);
+        t->SetBranchAddress("hiBin", &hiBin);
+        t->SetBranchAddress("pvZ", &pvZ); 
+        t->SetBranchAddress("trkNpixLayers", trkNpixLayers);
+        t->SetBranchAddress("trkCharge", trkCharge);
+        t->SetBranchAddress("trkWeight", trkWeight);
+        t->SetBranchAddress("trkPt", trkPt);
+        t->SetBranchAddress("trkEta", trkEta);
+        t->SetBranchAddress("trkPhi", trkPhi);
 
-    AnalysisLog::instance().save("./logs", "sig_DeltaEtaDeltaPhi");
+        // ----- SELECTION VARIABLE SETUP -----
+        double hiBinProxy, NtrkProxy, HFsumETProxy;
+        double* selectionVar;
+        double displayMoreeq = cfg.selVarMoreeq, displayLess = cfg.selVarLess;
+        const char* selectionVarName;
 
-    close_program(canvases, numCanvases,
-                  histograms, numHistograms,
-                  legends, numLegends, fr);
+        if (cfg.selectionVarType == ControlVar::CENT) {
+            selectionVar = &hiBinProxy; cfg.selVarMoreeq *= 2; cfg.selVarLess *= 2; selectionVarName = "CENT";
+        } else if (cfg.selectionVarType == ControlVar::MULT) {
+            selectionVar = &NtrkProxy; selectionVarName = "MULT";
+        } else {
+            selectionVar = &HFsumETProxy; selectionVarName = "CENTHF";
+        }
 
+        // ----- BINS & POOL SETUP -----
+        int nZBins = static_cast<int>(std::ceil((cfg.vertexDistance * 2.0) / cfg.zBinWidth));
+        std::vector<std::vector<EventData>> pool(nZBins);
+        size_t poolSize = static_cast<size_t>(cfg.poolSizeInt);
+
+        // ----- HISTOGRAMS & TIMING SETUP -----
+        double duration_full = 0.0, duration_mix = 0.0, duration_signal = 0.0;
+        double nnscale = 10000, x0 = 0., xt = 10.;
+
+        TH1D* hSigSS = new TH1D("hSigSS", ";q_{LCMS} [GeV];#Pairs", nnscale, x0, xt);
+        TH1D* hMixSS = new TH1D("hMixSS", ";q_{LCMS} [GeV];#Pairs", nnscale, x0, xt);
+        hSigSS->Sumw2(); hMixSS->Sumw2();
+
+        Long64_t nentries = t->GetEntries();
+        int processedEventsSig = 0, processedEventsMix = 0, thread_count = std::thread::hardware_concurrency();
+
+        // ----- MAIN EVENT LOOP -----
+        auto start_full = std::chrono::high_resolution_clock::now();
+        for (Long64_t i = 0; i < nentries; i++) {
+            t->GetEntry(i);
+            if (i % 500 == 0) printProgressBar(i + 1, nentries);
+
+            hiBinProxy = (double)hiBin; NtrkProxy = (double)Ntrk; HFsumETProxy = (double)HFsumET;
+
+            // ----- Processing Limit Check -----
+            bool sigLimitReached = cfg.useTestLimitSig && (processedEventsSig >= cfg.testLimitSig);
+            bool mixLimitReached = cfg.useTestLimitMix && (processedEventsMix >= cfg.testLimitMix);
+            if (sigLimitReached || mixLimitReached) break;
+
+            // ----- Event-level filters -----
+            if (!(*selectionVar >= cfg.selVarMoreeq && *selectionVar < cfg.selVarLess)) continue;
+            if (std::abs(pvZ) >= cfg.vertexDistance) continue;
+
+            // ----- Z-Bin calculation -----
+            int zBin = (int)((pvZ + cfg.vertexDistance) / cfg.zBinWidth);
+            if (zBin < 0) zBin = 0; if (zBin >= nZBins) zBin = nZBins - 1;
+
+            EventData currentEv;
+            for (int j = 0; j < Ntrk; j++) {
+                if (cfg.usePtMin  && (trkPt[j] < cfg.ptMin)) continue;
+                if (cfg.usePtMax  && (trkPt[j] > cfg.ptMax)) continue;
+                if (cfg.useEtaCut && (std::abs(trkEta[j]) > cfg.etaCut)) continue;
+                if (cfg.usePixHit && (trkNpixLayers[j] < cfg.pixHit)) continue;
+                if (std::isinf(trkWeight[j])) continue;
+
+                currentEv.tracks.push_back(ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>(trkPt[j], trkEta[j], trkPhi[j], pionMass));
+                currentEv.weights.push_back(trkWeight[j]);
+                currentEv.charges.push_back(trkCharge[j]);
+            }
+
+            if (currentEv.tracks.size() < 2) continue;
+            processedEventsSig++;
+
+            // ----- Mixing processing -----
+            auto start_mix_lap = std::chrono::high_resolution_clock::now();
+            if (!pool[zBin].empty()) {
+                processMixQLCMS(thread_count, currentEv, pool[zBin], hMixSS);
+                processedEventsMix++;
+            }
+            auto end_mix_lap = std::chrono::high_resolution_clock::now();
+            duration_mix += std::chrono::duration_cast<std::chrono::duration<double>>(end_mix_lap - start_mix_lap).count();
+
+            // ----- Signal processing -----
+            auto start_signal_lap = std::chrono::high_resolution_clock::now();
+            processSignalQLCMS(thread_count, currentEv, hSigSS);
+            auto end_signal_lap = std::chrono::high_resolution_clock::now();
+            duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
+
+            // ----- Pool Update -----
+            pool[zBin].push_back(currentEv);
+            if (pool[zBin].size() > poolSize) pool[zBin].erase(pool[zBin].begin());
+        }
+        auto end_full = std::chrono::high_resolution_clock::now();
+        duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
+
+        // ----- SAVING -----
+        char prefix[256];
+        sprintf(prefix, "qlcms_eta-abs%g_%s_%g-%g", cfg.etaCut, selectionVarName, displayMoreeq, displayLess);
+        TH1D *hists[] = {hSigSS, hMixSS};
+        save_histograms(hists, 2, "./data/signal_mix/", prefix, displayMoreeq, displayLess);
+        AnalysisLog::instance().save("./logs", "sig_qlcms");
     }
 
-int main(){
+    // ----- qtqz and q0q Analysis (2D) -----
+    void buildQtqzq0q() 
+    {
+        // ----- INITIALIZATION & DATA LOADING -----
+        TFile *fr = nullptr; TTree *t = nullptr;
+        getFileTree(inputs.fileInput.c_str(), inputs.treeInput.c_str(), fr, t);
+
+        Int_t maxSize = 50000, Ntrk, hiBin, trkCharge[maxSize]; 
+        Float_t pvZ, trkPt[maxSize], trkEta[maxSize], trkPhi[maxSize], trkWeight[maxSize], 
+                trkNpixLayers[maxSize], pionMass = 0.13957039;
+        Float_t HFsumET; 
+
+        t->SetBranchAddress("HFsumET", &HFsumET);
+        t->SetBranchAddress("Ntrk", &Ntrk);
+        t->SetBranchAddress("hiBin", &hiBin);
+        t->SetBranchAddress("pvZ", &pvZ); 
+        t->SetBranchAddress("trkNpixLayers", trkNpixLayers);
+        t->SetBranchAddress("trkCharge", trkCharge);
+        t->SetBranchAddress("trkWeight", trkWeight);
+        t->SetBranchAddress("trkPt", trkPt);
+        t->SetBranchAddress("trkEta", trkEta);
+        t->SetBranchAddress("trkPhi", trkPhi);
+
+        // ----- SELECTION VARIABLE SETUP -----
+        double hiBinProxy, NtrkProxy, HFsumETProxy;
+        double* selectionVar;
+        double displayMoreeq = cfg.selVarMoreeq, displayLess = cfg.selVarLess;
+        const char* selectionVarName;
+
+        if (cfg.selectionVarType == ControlVar::CENT) {
+            selectionVar = &hiBinProxy; cfg.selVarMoreeq *= 2; cfg.selVarLess *= 2; selectionVarName = "CENT";
+        } else if (cfg.selectionVarType == ControlVar::MULT) {
+            selectionVar = &NtrkProxy; selectionVarName = "MULT";
+        } else {
+            selectionVar = &HFsumETProxy; selectionVarName = "CENTHF";
+        }
+
+        // ----- HISTOGRAMS & TIMING SETUP -----
+        double duration_full = 0.0, duration_signal = 0.0;
+        double nnscale = 1000, x0 = 0., xt = 0.02;
+
+        TH2D* hSigSS_qtqz = new TH2D("hSigSS_qtqz", ";q_{t} [GeV];q_{z} [GeV];#Pairs", nnscale, x0, xt, nnscale, x0, xt);
+        TH2D* hSigSS_q0q = new TH2D("hSigSS_q0q", ";q_{0} [GeV];|#vec{q}| [GeV];#Pairs", nnscale, x0, xt, nnscale, x0, xt);
+
+        hSigSS_qtqz->Sumw2(); hSigSS_q0q->Sumw2();
+
+        Long64_t nentries = t->GetEntries();
+        int processedEventsSig = 0, thread_count = std::thread::hardware_concurrency();
+
+        // ----- MAIN EVENT LOOP -----
+        auto start_full = std::chrono::high_resolution_clock::now();
+        for (Long64_t i = 0; i < nentries; i++) {
+            t->GetEntry(i);
+            if (i % 500 == 0) printProgressBar(i + 1, nentries);
+
+            hiBinProxy = (double)hiBin; NtrkProxy = (double)Ntrk; HFsumETProxy = (double)HFsumET;
+
+            if (cfg.useTestLimitSig && (processedEventsSig >= cfg.testLimitSig)) break;
+
+            if (!(*selectionVar >= cfg.selVarMoreeq && *selectionVar < cfg.selVarLess)) continue;
+            if (std::abs(pvZ) >= cfg.vertexDistance) continue;
+
+            EventData currentEv;
+            for (int j = 0; j < Ntrk; j++) {
+                // ----- TRACK CUTS LOGIC -----
+                if (cfg.usePtMin  && (trkPt[j] < cfg.ptMin)) continue;
+                if (cfg.usePtMax  && (trkPt[j] > cfg.ptMax)) continue;
+                if (cfg.useEtaCut && (std::abs(trkEta[j]) > cfg.etaCut)) continue;
+                if (cfg.usePixHit && (trkNpixLayers[j] < cfg.pixHit)) continue;
+                if (std::isinf(trkWeight[j])) continue;
+
+                currentEv.tracks.push_back(ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double>>(trkPt[j], trkEta[j], trkPhi[j], pionMass));
+                currentEv.weights.push_back(trkWeight[j]);
+                currentEv.charges.push_back(trkCharge[j]);
+            }
+
+            if (currentEv.tracks.size() < 2) continue;
+            processedEventsSig++;
+
+            auto start_signal_lap = std::chrono::high_resolution_clock::now();
+            processSignalQtQzQ0Q(thread_count, currentEv, hSigSS_qtqz, hSigSS_q0q);
+            auto end_signal_lap = std::chrono::high_resolution_clock::now();
+            duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
+        }
+        auto end_full = std::chrono::high_resolution_clock::now();
+        duration_full = std::chrono::duration_cast<std::chrono::duration<double>>(end_full - start_full).count();
+
+        // ----- SAVING -----
+        char prefix[256];
+        sprintf(prefix, "qtqzq0q_eta-abs%g_%s_%g-%g", cfg.etaCut, selectionVarName, displayMoreeq, displayLess);
+        TH2D *hists[] = {hSigSS_qtqz, hSigSS_q0q};
+        save_histograms2d(hists, 2, "./data/signal_mix/", prefix, displayMoreeq, displayLess);
+        AnalysisLog::instance().save("./logs", "sig_qtqzq0q");
+    }
+};
+
+// ----- Simplified Testing Main -----
+int main() {
     ROOT::EnableImplicitMT();
-    // To compile use:
-    // g++ -std=c++17 -pthread makeSignal.cpp -o makeSignal `root-config --cflags --libs` -lGenVector
-    // To run use:
-    // ./makeSignal
-    // --- Analysis Configuration ---
-    const char* inputFile = "data/merged_2760PbPbMB_pixeltracks_UCC_skim.root";  
-    const char* treeName  = "demo/TreeMBUCC";
 
-    int test_limit_sig = -1; // -1 for no limit
-    int test_limit_mix = -1; // -1 for no limit
-
-    Double_t ptMin = 0.5; // Minimum pT cut for tracks
-    Double_t ptMax = -1.0; // Maximum pT cut for tracks (-1 for no max cut)
-
-    Double_t etaCut = 0.95;
+    // ----- Configuration -----
+    InputParams inputs;
+    inputs.fileInput = "data/merged_2760PbPbMB_pixeltracks_UCC_skim.root";
+    inputs.treeInput = "demo/TreeMBUCC";
 
     std::vector<double> centralityBins = {3200, 3300}; 
-    ControlVar selectedControlVar = ControlVar::CENTHF;
-    size_t repeats = 1; 
     
-    std::cout << "Starting analysis for " << centralityBins.size() - 1 << " bin(s)." << std::endl;
-    for (size_t j = 0; j < repeats; j++){
-        for (size_t i = 0; i < centralityBins.size() - 1; ++i){
-            double bin_low = centralityBins[i];
-            double bin_high = centralityBins[i+1];
-            
-            std::cout << "\n--- ["<< j << "]Running for centrality bin: " << bin_low << "% - " << bin_high << "% ---" << std::endl;
-            sig_DeltaEtaDeltaPhi(inputFile, treeName, bin_low, bin_high, selectedControlVar, ptMin, ptMax, etaCut);
-        }
-    }
-    std::cout << "\nAnalysis finished." << std::endl;
+    // Base parameters setup
+    AnalysisParams baseCfg;
+    baseCfg.selectionVarType = ControlVar::CENTHF;
+    baseCfg.ptMin = 0.5;
+    baseCfg.usePtMax = false; 
+    baseCfg.etaCut = 0.95;
+    baseCfg.pixHit = 1.0;
+    baseCfg.vertexDistance = 15.0;
+    baseCfg.poolSizeInt = 10;
+    baseCfg.zBinWidth = 2.0;
+    baseCfg.useTestLimitSig = false;
+    baseCfg.useTestLimitMix = false;
+    baseCfg.usePixHit = true;
 
+    // ----- Processing Loop -----
+    std::cout << "Starting analysis for " << centralityBins.size() - 1 << " bin(s)." << std::endl;
+    
+    for (size_t i = 0; i < centralityBins.size() - 1; ++i) {
+        AnalysisParams currentCfg = baseCfg; // Copy base settings
+        
+        currentCfg.selVarMoreeq = centralityBins[i];
+        currentCfg.selVarLess = centralityBins[i+1];
+
+        std::cout << "\n--- Running for bin: " << currentCfg.selVarMoreeq << " - " << currentCfg.selVarLess << " ---" << std::endl;
+        
+        Process analysis(inputs, currentCfg);
+        
+        // Running all analysis methods
+        analysis.buildDeltaEtaDeltaPhi();
+        //analysis.buildQinv();
+        //analysis.buildQlcms();
+        //analysis.buildQtqzq0q();
+    }
+
+    std::cout << "\nAll analysis bins finished." << std::endl;
     return 0;
 }

@@ -89,10 +89,13 @@ int main() {
     double bin_high2 = 3300.0;
 
     double plotXMin2d = 0.0;
-    double plotXMax2d = 0.15;
+    double plotXMax2d = 0.1;
 
     double plotYMin2d = 0.0;
-    double plotYMax2d = 0.15;
+    double plotYMax2d = 0.1;
+
+    double plotZMin2d = 0.6;
+    double plotZMax2d = 1.4;
 
     // Normalization qinv range
     Double_t etaCut2d = 0.04;
@@ -100,7 +103,7 @@ int main() {
     DeltaPhiDeltaEtaRatio(
         selectedControlVar2,
         bin_low2, bin_high2,
-        plotXMin2d, plotXMax2d, plotYMin2d, plotYMax2d,
+        plotXMin2d, plotXMax2d, plotYMin2d, plotYMax2d, plotZMin2d, plotZMax2d,
         etaCut2d
     );
 
