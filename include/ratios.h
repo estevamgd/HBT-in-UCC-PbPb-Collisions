@@ -39,7 +39,8 @@ void saveRatio(TH1D* hRatio,
     cRatio->cd();
     cRatio->SetLeftMargin(0.12);
     cRatio->SetBottomMargin(0.12);
-    hRatioClone->GetYaxis()->SetTitleOffset(1.2);
+    hRatioClone->GetXaxis()->SetTitleOffset(1.25);
+    hRatioClone->GetYaxis()->SetTitleOffset(1.45);
     hRatioClone->GetXaxis()->SetRangeUser(plotXMin, plotXMax);
     hRatioClone->GetYaxis()->SetRangeUser(plotYMin, plotYMax);
     hRatioClone->Draw("E1 PLC");
@@ -93,10 +94,13 @@ void saveRatio(TH2D* hRatio,
 
     TCanvas *cRatio = new TCanvas("cRatio", "Ratio", 1200, 800);
     cRatio->cd();
-    //cRatio->SetLeftMargin(0.12);
-    //cRatio->SetBottomMargin(0.12);
-    //hRatioClone->GetYaxis()->SetTitleOffset(1.2);
-    hRatioClone->Draw("COLZ");
+    cRatio->SetLeftMargin(0.12);
+    cRatio->SetBottomMargin(0.12);
+    cRatio->SetRightMargin(0.15);
+    hRatioClone->GetXaxis()->SetTitleOffset(1.8);
+    hRatioClone->GetYaxis()->SetTitleOffset(2.2);
+    hRatioClone->GetZaxis()->SetTitleOffset(1.4);
+    hRatioClone->Draw("LEGO2");
     
     drawCMSHeaders("#bf{CMS} #it{Work in Progress}", plotHeaderText);
 
@@ -109,7 +113,15 @@ void saveRatio(TH2D* hRatio,
     const char* imagePath = "./imgs/test/correlation_ratios/";
     TCanvas *canvasesToSave[] = { cRatio };
     save_canvas_images(canvasesToSave, 1, imagePath, outputPrefix, "png");
-    save_canvas_images(canvasesToSave, 1, imagePath, outputPrefix, "pdf");
+    const long long nCells =
+        static_cast<long long>(hRatioClone->GetNbinsX()) *
+        static_cast<long long>(hRatioClone->GetNbinsY());
+    if (nCells <= 200000) {
+        save_canvas_images(canvasesToSave, 1, imagePath, outputPrefix, "pdf");
+    } else {
+        std::cout << "Skipping PDF export for large 2D histogram (" << nCells
+                  << " bins) to avoid excessive memory usage." << std::endl;
+    }
     std::cout << "Output plots saved to " << imagePath << std::endl;
     
     delete hRatioClone;

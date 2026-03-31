@@ -422,4 +422,273 @@ void DeltaPhiDeltaEtaRatio(ControlVar selectedControlVar,
     delete singleRatio;
 }
 
+void QtQzQ0QCorrelationRatios(ControlVar selectedControlVar,
+                    double bin_low, double bin_high,
+                    double plotXMin, double plotXMax,
+                    double plotYMin, double plotYMax,
+                    double plotZMin, double plotZMax,
+                    Double_t q1x, Double_t q2x,
+                    Double_t q1y, Double_t q2y,
+                    const char* fileName = nullptr)
+{
+    const char* selectionVarName = getSelVarName(selectedControlVar);
+    TString searchPattern;
+
+    if (!fileName) {
+        searchPattern = TString::Format(
+            "./data/signal_mix/*qtqzq0q*_%s_%.0f-%.0f*.root",
+            selectionVarName, bin_low, bin_high
+        );
+    } else {
+        searchPattern = TString::Format(
+            "./data/signal_mix/*qtqzq0q*_%s_%.0f-%.0f*%s*.root",
+            selectionVarName, bin_low, bin_high, fileName
+        );
+    }
+
+    // Load once and support both naming schemes:
+    // 1) h_qtqz_SS_cor / h_qtqz_OS_cor / h_q0q_SS_cor / h_q0q_OS_cor
+    // 2) hSigSS_qtqz / hMixSS_qtqz / hSigSS_q0q / hMixSS_q0q from buildQtqzq0q()
+    TString dataFile = findFile(searchPattern);
+    if (dataFile.IsNull()) {
+        std::cerr << "Error: No data file found matching pattern: "
+                  << searchPattern << std::endl;
+        return;
+    } else {
+        std::cout << "Found data file: " << dataFile << std::endl;
+    }
+
+    TFile* file = TFile::Open(dataFile, "READ");
+    if (!file || file->IsZombie()) {
+        std::cerr << "Error: Could not open file: " << dataFile << std::endl;
+        return;
+    }
+
+    auto clone2d = [&](const char* name) -> TH2D* {
+        TH2D* h = dynamic_cast<TH2D*>(file->Get(name));
+        if (!h) return nullptr;
+        TH2D* hc = dynamic_cast<TH2D*>(h->Clone(Form("%s_clone", name)));
+        hc->SetDirectory(nullptr);
+        return hc;
+    };
+
+    TH2D* h_q0q_ss  = clone2d("h_q0q_SS_cor");
+    TH2D* h_q0q_os  = clone2d("h_q0q_OS_cor");
+    TH2D* h_q0q_mix  = clone2d("hMixSS_q0q");
+
+    if (!h_q0q_ss)  h_q0q_ss  = clone2d("hSigSS_q0q");
+
+    file->Close();
+    delete file;
+
+    if (!h_q0q_ss) {
+        std::cerr << "Error: Required qtqz/q0q histograms not found in file." << std::endl;
+        delete h_q0q_ss;
+        delete h_q0q_os;
+        delete h_q0q_mix;
+        return;
+    }
+
+    bool has_os = (h_q0q_os);
+    bool has_mix = (h_q0q_mix);
+
+    TH2D* ratio_q0q = nullptr;
+    const char* q0q_prefix = nullptr;
+    const char* q0q_legend = nullptr;
+    const char* q0q_title = nullptr;
+
+    if (has_os) {
+        ratio_q0q = histhistRatio2d(
+            h_q0q_ss, h_q0q_os,
+            q1x, q2x, q1y, q2y,
+            "sr_q0q_cor"
+        );
+        q0q_prefix = "sr_q0q_cor";
+        q0q_legend = "C(q_{0}^{2}, |q|^{2}) (SS/OS)";
+        q0q_title = "; q_{0}^{2} [GeV^{2}]; |#vec{q}|^{2} [GeV^{2}]; C(q_{0}^{2}, |q|^{2}) = SS/OS";
+    } else if (has_mix) {
+        ratio_q0q = histhistRatio2d(
+            h_q0q_ss, h_q0q_mix,
+            q1x, q2x, q1y, q2y,
+            "sr_q0q_cor"
+        );
+        q0q_prefix = "sr_q0q_cor";
+        q0q_legend = "C(q_{0}^{2}, |q|^{2}) (Sig/Mix)";
+        q0q_title = "; q_{0}^{2} [GeV^{2}]; |#vec{q}|^{2} [GeV^{2}]; C(q_{0}^{2}, |q|^{2}) = Sig/Mix";
+    } else {
+        ratio_q0q  = dynamic_cast<TH2D*>(h_q0q_ss->Clone("sig_q0q_cor"));
+        q0q_prefix = "sig_q0q_cor";
+        q0q_legend = "C(q_{0}^{2}, |q|^{2}) (Signal SS)";
+        q0q_title = "; q_{0}^{2} [GeV^{2}]; |#vec{q}|^{2} [GeV^{2}]; C(q_{0}^{2}, |q|^{2})";
+    }
+
+    saveRatio(
+        ratio_q0q,
+        Form("%s_%s_%.0f-%.0f", q0q_prefix, selectionVarName, bin_low, bin_high),
+        plotXMin, plotXMax, plotYMin, plotYMax, plotZMin, plotZMax,
+           q0q_prefix, "PbPb 2.76 TeV | C(q_{0}^{2}, |q|^{2})",
+           q0q_title, q0q_legend
+    );
+
+    delete h_q0q_ss;
+    delete h_q0q_os;
+    delete h_q0q_mix;
+    delete ratio_q0q;
+}
+/*
+void QtQzQ0QCorrelationRatios(ControlVar selectedControlVar,
+                    double bin_low, double bin_high,
+                    double plotXMin, double plotXMax,
+                    double plotYMin, double plotYMax,
+                    double plotZMin, double plotZMax,
+                    Double_t q1x, Double_t q2x,
+                    Double_t q1y, Double_t q2y,
+                    const char* fileName = nullptr)
+{
+    const char* selectionVarName = getSelVarName(selectedControlVar);
+    TString searchPattern;
+
+    if (!fileName) {
+        searchPattern = TString::Format(
+            "./data/signal_mix/*qtqzq0q*_%s_%.0f-%.0f*.root",
+            selectionVarName, bin_low, bin_high
+        );
+    } else {
+        searchPattern = TString::Format(
+            "./data/signal_mix/*qtqzq0q*_%s_%.0f-%.0f*%s*.root",
+            selectionVarName, bin_low, bin_high, fileName
+        );
+    }
+
+    // Load once and support both naming schemes:
+    // 1) h_qtqz_SS_cor / h_qtqz_OS_cor / h_q0q_SS_cor / h_q0q_OS_cor
+    // 2) hSigSS_qtqz / hMixSS_qtqz / hSigSS_q0q / hMixSS_q0q from buildQtqzq0q()
+    TString dataFile = findFile(searchPattern);
+    if (dataFile.IsNull()) {
+        std::cerr << "Error: No data file found matching pattern: "
+                  << searchPattern << std::endl;
+        return;
+    }
+
+    TFile* file = TFile::Open(dataFile, "READ");
+    if (!file || file->IsZombie()) {
+        std::cerr << "Error: Could not open file: " << dataFile << std::endl;
+        return;
+    }
+
+    auto clone2d = [&](const char* name) -> TH2D* {
+        TH2D* h = dynamic_cast<TH2D*>(file->Get(name));
+        if (!h) return nullptr;
+        TH2D* hc = dynamic_cast<TH2D*>(h->Clone(Form("%s_clone", name)));
+        hc->SetDirectory(nullptr);
+        return hc;
+    };
+
+    TH2D* h_qtqz_ss = clone2d("h_qtqz_SS_cor");
+    TH2D* h_qtqz_os = clone2d("h_qtqz_OS_cor");
+    TH2D* h_q0q_ss  = clone2d("h_q0q_SS_cor");
+    TH2D* h_q0q_os  = clone2d("h_q0q_OS_cor");
+    TH2D* h_qtqz_mix = clone2d("hMixSS_qtqz");
+    TH2D* h_q0q_mix  = clone2d("hMixSS_q0q");
+
+    if (!h_qtqz_ss) h_qtqz_ss = clone2d("hSigSS_qtqz");
+    if (!h_q0q_ss)  h_q0q_ss  = clone2d("hSigSS_q0q");
+
+    file->Close();
+    delete file;
+
+    if (!h_qtqz_ss || !h_q0q_ss) {
+        std::cerr << "Error: Required qtqz/q0q histograms not found in file." << std::endl;
+        delete h_qtqz_ss;
+        delete h_qtqz_os;
+        delete h_qtqz_mix;
+        delete h_q0q_ss;
+        delete h_q0q_os;
+        delete h_q0q_mix;
+        return;
+    }
+
+    bool has_os = (h_qtqz_os && h_q0q_os);
+    bool has_mix = (h_qtqz_mix && h_q0q_mix);
+
+    TH2D* ratio_qtqz = nullptr;
+    TH2D* ratio_q0q = nullptr;
+    const char* qtqz_prefix = nullptr;
+    const char* q0q_prefix = nullptr;
+    const char* qtqz_legend = nullptr;
+    const char* q0q_legend = nullptr;
+    const char* qtqz_title = nullptr;
+    const char* q0q_title = nullptr;
+
+    if (has_os) {
+        ratio_qtqz = histhistRatio2d(
+            h_qtqz_ss, h_qtqz_os,
+            q1x, q2x, q1y, q2y,
+            "sr_qtqz_cor"
+        );
+        ratio_q0q = histhistRatio2d(
+            h_q0q_ss, h_q0q_os,
+            q1x, q2x, q1y, q2y,
+            "sr_q0q_cor"
+        );
+        qtqz_prefix = "sr_qtqz_cor";
+        q0q_prefix = "sr_q0q_cor";
+        qtqz_legend = "C(q_{z}^{2}, q_{t}^{2}) (SS/OS)";
+        q0q_legend = "C(q_{0}^{2}, |q|^{2}) (SS/OS)";
+        qtqz_title = "; q_{t}^{2} [GeV^{2}]; q_{z}^{2} [GeV^{2}]; C(q_{z}^{2}, q_{t}^{2}) = SS/OS";
+        q0q_title = "; q_{0}^{2} [GeV^{2}]; |#vec{q}|^{2} [GeV^{2}]; C(q_{0}^{2}, |q|^{2}) = SS/OS";
+    } else if (has_mix) {
+        ratio_qtqz = histhistRatio2d(
+            h_qtqz_ss, h_qtqz_mix,
+            q1x, q2x, q1y, q2y,
+            "sr_qtqz_cor"
+        );
+        ratio_q0q = histhistRatio2d(
+            h_q0q_ss, h_q0q_mix,
+            q1x, q2x, q1y, q2y,
+            "sr_q0q_cor"
+        );
+        qtqz_prefix = "sr_qtqz_cor";
+        q0q_prefix = "sr_q0q_cor";
+        qtqz_legend = "C(q_{z}^{2}, q_{t}^{2}) (Sig/Mix)";
+        q0q_legend = "C(q_{0}^{2}, |q|^{2}) (Sig/Mix)";
+        qtqz_title = "; q_{t}^{2} [GeV^{2}]; q_{z}^{2} [GeV^{2}]; C(q_{z}^{2}, q_{t}^{2}) = Sig/Mix";
+        q0q_title = "; q_{0}^{2} [GeV^{2}]; |#vec{q}|^{2} [GeV^{2}]; C(q_{0}^{2}, |q|^{2}) = Sig/Mix";
+    } else {
+        ratio_qtqz = dynamic_cast<TH2D*>(h_qtqz_ss->Clone("sig_qtqz_cor"));
+        ratio_q0q  = dynamic_cast<TH2D*>(h_q0q_ss->Clone("sig_q0q_cor"));
+        qtqz_prefix = "sig_qtqz_cor";
+        q0q_prefix = "sig_q0q_cor";
+        qtqz_legend = "C(q_{z}^{2}, q_{t}^{2}) (Signal SS)";
+        q0q_legend = "C(q_{0}^{2}, |q|^{2}) (Signal SS)";
+        qtqz_title = "; q_{t}^{2} [GeV^{2}]; q_{z}^{2} [GeV^{2}]; C(q_{z}^{2}, q_{t}^{2})";
+        q0q_title = "; q_{0}^{2} [GeV^{2}]; |#vec{q}|^{2} [GeV^{2}]; C(q_{0}^{2}, |q|^{2})";
+    }
+
+    saveRatio(
+        ratio_qtqz,
+        Form("%s_%s_%.0f-%.0f", qtqz_prefix, selectionVarName, bin_low, bin_high),
+        plotXMin, plotXMax, plotYMin, plotYMax, plotZMin, plotZMax,
+           qtqz_prefix, "PbPb 2.76 TeV | C(q_{z}^{2}, q_{t}^{2})",
+           qtqz_title, qtqz_legend
+    );
+
+    saveRatio(
+        ratio_q0q,
+        Form("%s_%s_%.0f-%.0f", q0q_prefix, selectionVarName, bin_low, bin_high),
+        plotXMin, plotXMax, plotYMin, plotYMax, plotZMin, plotZMax,
+           q0q_prefix, "PbPb 2.76 TeV | C(q_{0}^{2}, |q|^{2})",
+           q0q_title, q0q_legend
+    );
+
+    delete h_qtqz_ss;
+    delete h_qtqz_os;
+    delete h_qtqz_mix;
+    delete h_q0q_ss;
+    delete h_q0q_os;
+    delete h_q0q_mix;
+    delete ratio_qtqz;
+    delete ratio_q0q;
+}
+*/
 #endif

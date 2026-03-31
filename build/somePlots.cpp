@@ -3,7 +3,6 @@
 #include <TROOT.h>
 #include <TF1.h>
 #include <TMath.h>
-#include <TMath.h>
 #include "TCanvas.h"
 #include "TH1D.h"
 #include <stdio.h>
@@ -22,11 +21,10 @@
 #include "ROOT/RDataFrame.hxx"
 #include "TCanvas.h"
 #include "TH2D.h"
-#include "TLine.h"
 #include "TLatex.h"
-#include <iostream>
 #include <vector>
 #include <string>
+#include <filesystem> // Required for std::filesystem
 
 void qinvqlcmsPlot(double plotXMin, double plotXMax, double plotYMin, double plotYMax,
                    TH1D* hQinv_data = nullptr, TH1D* hQLCMS_data = nullptr) {
@@ -90,7 +88,7 @@ void qinvqlcmsPlot(double plotXMin, double plotXMax, double plotYMin, double plo
 
     drawCMSHeaders("#bf{CMS} #it{Work in Progress}", "PbPb 2.76 TeV | q inv x q LCMS Comparison", 1.0);
 
-    const char* imagePath = "./imgs/test/correlation_ratios/";
+    const char* imagePath = "./imgs/test/control_plots/";
     TCanvas *canvasesToSave[] = { cComp };
     save_canvas_images(canvasesToSave, 1, imagePath, "qinv_qlcms_comparison", "png");
     save_canvas_images(canvasesToSave, 1, imagePath, "qinv_qlcms_comparison", "pdf");
@@ -102,17 +100,16 @@ void qinvqlcmsPlot(double plotXMin, double plotXMax, double plotYMin, double plo
     delete cComp;
 }
 
-
-void plot_zdc_vs_hf(std::string input_file, std::string filename_out = "imgs/test/ZDC_vs_HF_UCC.pdf") {
+void plot_zdc_vs_hf(std::string input_file) {
     ROOT::EnableImplicitMT();
     ROOT::RDataFrame df("demo/TreeMBUCC", input_file);
 
-    auto df_filtered = df.Filter("HLT_HIUCC010_v2 == 1", "Trigger UCC");
+    //auto df_filtered = df.Filter("HLT_HIMinBiasHfOrBSC_v1 == 1", "Trigger UCC"); // HLT_HIUCC010_v2 HLT_HIUCC015_v2 HLT_HIMinBiasHfOrBSC_v1
 
     std::string nome_HF = "HFsumET";
     std::string nome_ZDC = "zdcSum";
 
-    auto hist2d = df_filtered.Histo2D(
+    auto hist2d = df.Histo2D(
         {"zdc_vs_hf", ";HF #Sigma E_{T} [GeV];ZDC #Sigma E_{T} [GeV];#Events", 
          500, 0, 7000, 500, 0, 600000}, 
         nome_HF, 
@@ -141,7 +138,7 @@ void plot_zdc_vs_hf(std::string input_file, std::string filename_out = "imgs/tes
     hist2d->Draw("COLZ");
 
     // --- Linha de Rejeição ---
-    double x_start = 1450.0;
+    double x_start = 675.0;
     double y_start = 600000.0;
     double x_end   = 3900.0;
     double y_end   = 0.0;
@@ -183,22 +180,35 @@ void plot_zdc_vs_hf(std::string input_file, std::string filename_out = "imgs/tes
     latex.SetTextSize(0.04);
     latex.DrawLatex(0.85, 0.94, "PbPb 2.76 TeV");
 
-    canvas->SaveAs(filename_out.c_str());
+    // Replaced direct SaveAs with save_canvas_images
+    const char* imagePath = "./imgs/test/control_plots/";
+    TCanvas *canvasesToSave[] = { canvas };
+    save_canvas_images(canvasesToSave, 1, imagePath, "ZDC_vs_HF_UCC", "pdf");
+    save_canvas_images(canvasesToSave, 1, imagePath, "ZDC_vs_HF_UCC", "png");
     
-    std::cout << "✅ Gráfico ZDC vs HF com legenda salvo em " << filename_out << std::endl;
+    std::cout << "✅ Gráfico ZDC vs HF com legenda salvo em " << imagePath << std::endl;
 }
 
-void plot_hf_comparison_cms_style(std::string input_file, std::string filename_out = "imgs/test/HF_CMS_Style.pdf") {
+void plot_hf_comparison_cms_style(std::string input_file) {
     ROOT::EnableImplicitMT();
     ROOT::RDataFrame df("demo/TreeMBUCC", input_file);
 
-    // 1. Filtros e Definição da Reta
-    auto df_triggered = df.Filter("HLT_HIUCC010_v2 == 1", "Trigger UCC");
-    std::string cut_formula = "zdcSum < (-244.898 * HFsumET + 955102.0)";
-    auto h_raw = df_triggered.Histo1D({"h_raw", "", 100, 0, 7000}, "HFsumET");
-    auto h_clean = df_triggered.Filter(cut_formula).Histo1D({"h_clean", "", 100, 0, 7000}, "HFsumET");
+    // 1. Definition of the Cut Line (New parameters)
+    double x_start = 675.0;
+    double y_start = 600000.0;
+    double x_end   = 3900.0;
+    double y_end   = 0.0;
+    double m = (y_end - y_start) / (x_end - x_start);
+    double b = y_end - m * x_end;
 
-    // 2. Configuração do Canvas (Estilo CMS)
+    // Construct the cut formula string dynamically
+    std::string cut_formula = Form("zdcSum < (%f * HFsumET + %f)", m, b);
+
+    // 2. Histograms    
+    auto h_raw = df.Histo1D({"h_raw", "", 100, 0, 7000}, "HFsumET");
+    auto h_clean = df.Filter(cut_formula).Histo1D({"h_clean", "", 100, 0, 7000}, "HFsumET");
+
+    // 3. Configuração do Canvas (Estilo CMS)
     TCanvas *c = new TCanvas("c", "", 1200, 800);
     gPad->SetLeftMargin(0.15);
     gPad->SetRightMargin(0.05);
@@ -266,8 +276,11 @@ void plot_hf_comparison_cms_style(std::string input_file, std::string filename_o
     latex.SetTextSize(0.04);
     latex.DrawLatex(0.85, 0.94, "PbPb 2.76 TeV");
 
-
-    c->SaveAs(filename_out.c_str());
+    // Replaced direct SaveAs with save_canvas_images
+    const char* imagePath = "./imgs/test/control_plots/";
+    TCanvas *canvasesToSave[] = { c };
+    save_canvas_images(canvasesToSave, 1, imagePath, "HF_CMS_Style", "pdf");
+    save_canvas_images(canvasesToSave, 1, imagePath, "HF_CMS_Style", "png");
 }
 
 int main() {

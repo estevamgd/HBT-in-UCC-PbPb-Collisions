@@ -89,10 +89,10 @@ int main() {
     double bin_high2 = 3300.0;
 
     double plotXMin2d = 0.0;
-    double plotXMax2d = 0.1;
+    double plotXMax2d = 0.015;
 
     double plotYMin2d = 0.0;
-    double plotYMax2d = 0.1;
+    double plotYMax2d = 0.015;
 
     double plotZMin2d = 0.6;
     double plotZMax2d = 1.4;
@@ -100,11 +100,23 @@ int main() {
     // Normalization qinv range
     Double_t etaCut2d = 0.04;
 
-    DeltaPhiDeltaEtaRatio(
+    Double_t q1x2d = 0.0;
+    Double_t q2x2d = 0.015;
+    Double_t q1y2d = 0.0;
+    Double_t q2y2d = 0.015;
+
+    //DeltaPhiDeltaEtaRatio(
+    //    selectedControlVar2,
+    //    bin_low2, bin_high2,
+    //    plotXMin2d, plotXMax2d, plotYMin2d, plotYMax2d, plotZMin2d, plotZMax2d,
+    //    etaCut2d
+    //);
+
+    QtQzQ0QCorrelationRatios(
         selectedControlVar2,
         bin_low2, bin_high2,
         plotXMin2d, plotXMax2d, plotYMin2d, plotYMax2d, plotZMin2d, plotZMax2d,
-        etaCut2d
+        q1x2d, q2x2d, q1y2d, q2y2d
     );
 
     return 0;
