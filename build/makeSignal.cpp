@@ -419,131 +419,7 @@ private:
         for (auto& lh : local_hists) hMixSS->Add(lh->h);
     }
 
-    // --- QtQzQ0Q Processes (2D) ---
-    void processSignalQtQzQ0Q(int thread_count, const EventData& currentEv, TH2D* hQ0QSS) {
-        size_t n_tracks = currentEv.tracks.size();
-        if (n_tracks <= 1) return;
-        if (thread_count == 0) thread_count = 1;
-
-        struct LocalHistograms {
-            TH2D *q0q;
-            LocalHistograms(const TH2D* base2) {
-                q0q = (TH2D*)base2->Clone(TString::Format("%s_clone_%p", base2->GetName(), this));
-                q0q->Reset();
-            }
-            ~LocalHistograms() {  delete q0q; }
-        };
-
-        std::vector<std::thread> threads;
-        std::vector<std::unique_ptr<LocalHistograms>> local_hists;
-        for (int i = 0; i < thread_count; ++i) local_hists.push_back(std::make_unique<LocalHistograms>(hQ0QSS));
-
-        auto thread_task = [&](size_t start, size_t end, LocalHistograms* lh) {
-            for (size_t p1 = start; p1 < end; p1++) {
-                for (size_t p2 = p1 + 1; p2 < n_tracks; p2++) {
-                    if (currentEv.charges[p1] * currentEv.charges[p2] > 0) { // SS Only
-                        
-                        if (cfg.useSplitCut) {
-                            if (!IsGoodPairSplit(currentEv.tracks[p1], currentEv.tracks[p2])) continue;
-                        }
-
-                        auto tp1 = currentEv.tracks[p1];
-                        auto tp2 = currentEv.tracks[p2];
-                        auto K = 0.5 * (tp1 + tp2);
-                        ROOT::Math::BoostZ boost(-K.Pz() / K.E());
-                        auto tp1_lcms = boost(tp1);
-                        auto tp2_lcms = boost(tp2);
-                        auto q = tp1_lcms - tp2_lcms;
-
-                        double q0 = q.E();
-                        double qz = q.Pz();
-                        double qt = std::sqrt(q.Px()*q.Px() + q.Py()*q.Py());
-                        double q0_2 = q0 * q0;
-                        double qz_2 = qz * qz;
-                        double qt_2 = qt * qt;
-                        double qabs_2 = qt_2 + qz_2;
-
-                        lh->q0q->Fill(q0_2, qabs_2, currentEv.weights[p1] * currentEv.weights[p2]);
-                    }
-                }
-            }
-        };
-
-        size_t chunk = n_tracks / thread_count;
-        for (int t = 0; t < thread_count; t++) {
-            size_t start = t * chunk;
-            size_t end = (t == thread_count - 1) ? n_tracks : (t + 1) * chunk;
-            threads.emplace_back(thread_task, start, end, local_hists[t].get());
-        }
-        for (auto& t : threads) t.join();
-        for (auto& lh : local_hists) {
-            hQ0QSS->Add(lh->q0q);
-        }
-    }
-
-    void processMixQtQzQ0Q(int thread_count, const EventData& currentEv, const std::vector<EventData>& pool, TH2D* hQ0QMix) {
-        if (currentEv.tracks.empty() || pool.empty()) return;
-        if (thread_count == 0) thread_count = 1;
-
-        struct LocalHistograms {
-            TH2D *q0q;
-            LocalHistograms(const TH2D* base2) {
-                q0q = (TH2D*)base2->Clone(TString::Format("%s_clone_%p", base2->GetName(), this));
-                q0q->Reset();
-            }
-            ~LocalHistograms() { delete q0q; }
-        };
-
-        std::vector<std::thread> threads;
-        std::vector<std::unique_ptr<LocalHistograms>> local_hists;
-        for (int i = 0; i < thread_count; ++i) local_hists.push_back(std::make_unique<LocalHistograms>(hQ0QMix));
-
-        auto thread_task = [&](size_t start, size_t end, LocalHistograms* lh) {
-            for (size_t p1 = start; p1 < end; ++p1) {
-                for (const auto& pastEv : pool) {
-                    for (size_t p2 = 0; p2 < pastEv.tracks.size(); ++p2) {
-                        if (currentEv.charges[p1] * pastEv.charges[p2] > 0) { // SS Only
-
-                            if (cfg.useSplitCut) {
-                                if (!IsGoodPairSplit(currentEv.tracks[p1], pastEv.tracks[p2])) continue;
-                            }
-
-                            auto tp1 = currentEv.tracks[p1];
-                            auto tp2 = pastEv.tracks[p2];
-                            auto K = 0.5 * (tp1 + tp2);
-                            ROOT::Math::BoostZ boost(-K.Pz() / K.E());
-                            auto tp1_lcms = boost(tp1);
-                            auto tp2_lcms = boost(tp2);
-                            auto q = tp1_lcms - tp2_lcms;
-
-                            double q0 = q.E();
-                            double qz = q.Pz();
-                            double qt = std::sqrt(q.Px()*q.Px() + q.Py()*q.Py());
-                            double q0_2 = q0 * q0;
-                            double qz_2 = qz * qz;
-                            double qt_2 = qt * qt;
-                            double qabs_2 = qt_2 + qz_2;
-
-                            double pairWeight = currentEv.weights[p1] * pastEv.weights[p2];
-                            lh->q0q->Fill(q0_2, qabs_2, pairWeight);
-                        }
-                    }
-                }
-            }
-        };
-
-        size_t chunk = currentEv.tracks.size() / thread_count;
-        for (int t = 0; t < thread_count; t++) {
-            size_t start = t * chunk;
-            size_t end = (t == thread_count - 1) ? currentEv.tracks.size() : (t + 1) * chunk;
-            threads.emplace_back(thread_task, start, end, local_hists[t].get());
-        }
-        for (auto& t : threads) t.join();
-        for (auto& lh : local_hists) {
-            hQ0QMix->Add(lh->q0q);
-        }
-    }
-    /*
+    
     // --- QtQzQ0Q Processes (2D) ---
     void processSignalQtQzQ0Q(int thread_count, const EventData& currentEv, TH2D* hQtQzSS, TH2D* hQ0QSS) {
         size_t n_tracks = currentEv.tracks.size();
@@ -674,7 +550,7 @@ private:
             hQ0QMix->Add(lh->q0q);
         }
     }
-    */
+
 public:
     Process(InputParams in, AnalysisParams out) : inputs(in), cfg(out) {}
 
@@ -1122,9 +998,13 @@ public:
         double x0 = 0., xt = 0.015;
 
         TH2D* hSigSS_q0q = new TH2D("hSigSS_q0q", ";q_{0}^{2} [GeV^{2}];|#vec{q}|^{2} [GeV^{2}];#Pairs", nnscale, x0, xt, nnscale, x0, xt);
+        TH2D* hSigSS_qtqz = new TH2D("hSigSS_qtqz", ";q_{t}^{2} [GeV^{2}];|q_{z}^{2} [GeV^{2}];#Pairs", nnscale, x0, xt, nnscale, x0, xt);
+        TH2D* hMixSS_qtqz = new TH2D("hMixSS_qtqz", ";q_{t}^{2} [GeV^{2}];|q_{z}^{2} [GeV^{2}];#Pairs", nnscale, x0, xt, nnscale, x0, xt);
         TH2D* hMixSS_q0q = new TH2D("hMixSS_q0q", ";q_{0}^{2} [GeV^{2}];|#vec{q}|^{2} [GeV^{2}];#Pairs", nnscale, x0, xt, nnscale, x0, xt);
 
         hSigSS_q0q->Sumw2();
+        hSigSS_qtqz->Sumw2();
+        hMixSS_qtqz->Sumw2();
         hMixSS_q0q->Sumw2();
 
         Long64_t nentries = t->GetEntries();
@@ -1168,14 +1048,14 @@ public:
             // ----- Mixing processing -----
             auto start_mix_lap = std::chrono::high_resolution_clock::now();
             if (!pool[zBin].empty()) {
-                processMixQtQzQ0Q(thread_count, currentEv, pool[zBin], hMixSS_q0q);
+                processMixQtQzQ0Q(thread_count, currentEv, pool[zBin], hMixSS_qtqz, hMixSS_q0q);
                 processedEventsMix++;
             }
             auto end_mix_lap = std::chrono::high_resolution_clock::now();
             duration_mix += std::chrono::duration_cast<std::chrono::duration<double>>(end_mix_lap - start_mix_lap).count();
 
             auto start_signal_lap = std::chrono::high_resolution_clock::now();
-            processSignalQtQzQ0Q(thread_count, currentEv, hSigSS_q0q);
+            processSignalQtQzQ0Q(thread_count, currentEv, hSigSS_qtqz, hSigSS_q0q);
             auto end_signal_lap = std::chrono::high_resolution_clock::now();
             duration_signal += std::chrono::duration_cast<std::chrono::duration<double>>(end_signal_lap - start_signal_lap).count();
 
@@ -1189,9 +1069,9 @@ public:
         // ----- SAVING -----
         char prefix[256];
         sprintf(prefix, "qtqzq0q_eta-abs%g_%s_%g-%g", cfg.etaCut, selectionVarName, displayMoreeq, displayLess);
-        TH2D *hists[] = {hSigSS_q0q, hMixSS_q0q};
+        TH2D *hists[] = {hSigSS_q0q, hMixSS_q0q, hSigSS_qtqz, hMixSS_qtqz};
         save_benchmark_chrono({duration_full, duration_signal, duration_mix}, {"Total", "Signal", "Mix"}, "benchmarks", prefix, processedEventsSig, processedEventsMix);
-        save_histograms2d(hists, 2, "./data/signal_mix/", prefix, displayMoreeq, displayLess);
+        save_histograms2d(hists, 4, "./data/signal_mix/", prefix, displayMoreeq, displayLess);
         AnalysisLog::instance().save("./logs", "sig_qtqzq0q");
         if (fr) { fr->Close(); delete fr; }
     }
@@ -1218,7 +1098,7 @@ int main() {
     baseCfg.ptMin = 0.5;
     baseCfg.usePtMax = false; 
     baseCfg.etaCut = 0.95;
-    baseCfg.pixHit = 3.0;
+    baseCfg.pixHit = 1.0;
     baseCfg.nvalidHits = 6.0;
     baseCfg.vertexDistance = 15.0;
     baseCfg.poolSizeInt = 10;
@@ -1227,7 +1107,7 @@ int main() {
     baseCfg.useTestLimitSig = false;
     baseCfg.useTestLimitMix = false;
     baseCfg.usePixHit = true;
-    baseCfg.useNvalidHits = true;
+    baseCfg.useNvalidHits = false;
     
     // --- New Pile-Up Cut Toggles ---
     baseCfg.usePileUpCut = true; // Activated by default based on requirement
@@ -1251,8 +1131,8 @@ int main() {
         // Running all analysis methods
         //analysis.buildDeltaEtaDeltaPhi();
         //analysis.buildQinv();
-        //analysis.buildQlcms();
-        analysis.buildQtqzq0q();
+        analysis.buildQlcms();
+        //analysis.buildQtqzq0q();
     }
 
     std::cout << "\nAll analysis bins finished." << std::endl;
