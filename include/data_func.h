@@ -16,7 +16,8 @@ using namespace std;
 #define ALPHAEM 0.0072973525664  // 1.0/137.035999139, fine structure constant
 #define PREFACTOR 0.016215165    // ALPHAEM * PI * PI_MASS / HBARC
 
-enum class FitFunctionType { EXPONENTIAL = 0, GAUSSIAN = 1, LEVY = 2, LEVY2 = 3, BACKGROUND = 4, DOUBLE_LEVY = 5 };
+enum class FitFunctionType { EXPONENTIAL = 0, GAUSSIAN = 1, LEVY = 2, 
+    LEVY2 = 3, BACKGROUND = 4, DOUBLE_LEVY = 5, UNKNOWN = 6};
 
 // to reject a range in the fit
 Double_t reject_range_min = -100000.0;

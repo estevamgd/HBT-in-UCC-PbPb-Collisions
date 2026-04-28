@@ -6,6 +6,128 @@
 #include "../include/my_func.h"
 #include "../include/fits.h"
 #include "../include/fitRangeScan.h"
+#include <stdexcept>
+
+
+struct MultipleFitResults { 
+    std::vector<TFitResultPtr> results;
+    std::vector<std::string> modelNames;
+};
+
+struct AlphaSeedFitOutput {
+    FitOutput fixedAlphaFit;
+    FitOutput freeAlphaFit;
+    FitInit freeAlphaInit;
+};
+
+FitInit findModelInitOrDefault(
+    const std::vector<std::pair<FitFunctionType, FitInit>>& models,
+    FitFunctionType type,
+    const FitInit& fallback)
+{
+    for (const auto& model : models) {
+        if (model.first == type) {
+            return model.second;
+        }
+    }
+
+    return fallback;
+}
+
+AlphaSeedFitOutput fitDoubleLevyAlphaOneThenFreeDetailed(
+    TH1D* hist,
+    const FitInit& init,
+    double fitMin = 0.0,
+    double fitMax = 10.0)
+{
+    auto cfg = getFitModelConfig(FitFunctionType::DOUBLE_LEVY);
+    if ((int)init.values.size() != cfg.nPar) {
+        throw std::runtime_error("Wrong number of initial parameters for DOUBLE_LEVY");
+    }
+
+    static int alphaOneSeedCounter = 0;
+    TString fixedFitName = TString::Format("fitLevyDR_alpha1_fixed_%d", alphaOneSeedCounter++);
+    TF1* fixedAlphaFit = new TF1(fixedFitName, cfg.func, fitMin, fitMax, cfg.nPar);
+
+    for (int i = 0; i < cfg.nPar; ++i) {
+        fixedAlphaFit->SetParameter(i, init.values[i]);
+        fixedAlphaFit->SetParName(i, cfg.parNames[i].c_str());
+
+        if (i == 2) {
+            continue;
+        }
+
+        if (i < (int)cfg.parLimits.size() &&
+            cfg.parLimits[i].first != cfg.parLimits[i].second) {
+            fixedAlphaFit->SetParLimits(
+                i,
+                cfg.parLimits[i].first,
+                cfg.parLimits[i].second
+            );
+        }
+    }
+
+    fixedAlphaFit->FixParameter(2, 1.0);
+    TFitResultPtr fixedAlphaResult = hist->Fit(fixedAlphaFit, "S R E M");
+
+    std::vector<double> seededValues = init.values;
+    for (int i = 0; i < cfg.nPar; ++i) {
+        seededValues[i] = fixedAlphaFit->GetParameter(i);
+    }
+    seededValues[2] = 1.0;
+
+    TFitResultPtr freeAlphaResult;
+    TF1* finalFit = fitHistogram(
+        hist,
+        &freeAlphaResult,
+        FitFunctionType::DOUBLE_LEVY,
+        FitInit{seededValues},
+        fitMin,
+        fitMax
+    );
+
+    return {
+        {
+            FitFunctionType::DOUBLE_LEVY,
+            fixedAlphaFit,
+            fixedAlphaResult,
+            cfg.legendParams,
+            "Levy Fit (#alpha fixed to 1)"
+        },
+        {
+            FitFunctionType::DOUBLE_LEVY,
+            finalFit,
+            freeAlphaResult,
+            cfg.legendParams,
+            "Levy Fit (#alpha free, #alpha=1 seed)"
+        },
+        FitInit{seededValues}
+    };
+}
+
+FitOutput fitDoubleLevyAlphaOneThenFree(
+    TH1D* hist,
+    const FitInit& init,
+    double fitMin = 0.0,
+    double fitMax = 10.0)
+{
+    AlphaSeedFitOutput detailedFit = fitDoubleLevyAlphaOneThenFreeDetailed(
+        hist,
+        init,
+        fitMin,
+        fitMax
+    );
+
+    delete detailedFit.fixedAlphaFit.function;
+
+    return {
+        detailedFit.freeAlphaFit.type,
+        detailedFit.freeAlphaFit.function,
+        detailedFit.freeAlphaFit.result,
+        detailedFit.freeAlphaFit.params,
+        detailedFit.freeAlphaFit.displayName
+    };
+}
 
 void doubleRatioFit(ControlVar selectedControlVar,
                     std::vector<std::pair<FitFunctionType, FitInit>> models,
@@ -24,19 +146,21 @@ void doubleRatioFit(ControlVar selectedControlVar,
     const char* qmodename = (mode == qMode::QINV) ? "qinv" : "qlcms";
     const char* selectionVarName = getSelVarName(selectedControlVar);
     TString searchPattern;
+
     if (!fileName) {
         searchPattern = TString::Format(
             "./data/signal_mix/"
-            "sig_%s_eta-%.2f-to-%.2f_pT-from-%.2f_%s*.root",
-            qmodename, etaMin, etaMax, ptMin, selectionVarName
+            "%s_eta-abs%.2f_CENTHF_%d-%d_cent%dto%d*.root",
+            qmodename,etaMin, (int)bin_low, (int)bin_high, (int)bin_low, (int)bin_high 
         );
     } else {
         searchPattern = TString::Format(
             "./data/signal_mix/"
-            "sig_%s_eta-%.2f-to-%.2f_pT-from-%.2f_%s_%s.root",
-            qmodename, etaMin, etaMax, ptMin, selectionVarName, fileName
+            "%s_eta-abs%.2f_CENTHF_%d-%d_cent%dto%d-%s.root",
+            qmodename,etaMin,(int)bin_low, (int)bin_high, (int)bin_low, (int)bin_high, fileName 
         );
     }
+
     const char* name_ssHist = Form("h_%sSSCor_signal_2l", qmodename);
     const char* name_osHist = Form("h_%sOSCor_signal_2l", qmodename);
     
@@ -190,7 +314,7 @@ void doubleRatioFit(ControlVar selectedControlVar,
     
 }
 
-void doubleRatioMixFit(ControlVar selectedControlVar,
+MultipleFitResults doubleRatioMixFit(ControlVar selectedControlVar,
                     std::vector<std::pair<FitFunctionType, FitInit>> models,
                     double bin_low, double bin_high,
                     Double_t etaMin, Double_t etaMax,
@@ -211,18 +335,19 @@ void doubleRatioMixFit(ControlVar selectedControlVar,
     if (!fileName) {
         searchPattern = TString::Format(
             "./data/signal_mix/"
-            "sig_%s_eta-%.2f-to-%.2f_pT-from-%.2f_%s*.root",
-            qmodename, etaMin, etaMax, ptMin, selectionVarName
+            "%s_eta-abs%.2f_CENTHF_%d-%d_cent%dto%d*.root",
+            qmodename,etaMin, (int)bin_low, (int)bin_high, (int)bin_low, (int)bin_high 
         );
     } else {
         searchPattern = TString::Format(
             "./data/signal_mix/"
-            "sig_%s_eta-%.2f-to-%.2f_pT-from-%.2f_%s_%s.root",
-            qmodename, etaMin, etaMax, ptMin, selectionVarName, fileName
+            "%s_eta-abs%.2f_CENTHF_%d-%d_cent%dto%d-%s.root",
+            qmodename,etaMin,(int)bin_low, (int)bin_high, (int)bin_low, (int)bin_high, fileName 
         );
     }
-    const char* name_sigHist = Form("h_%sSSCor_signal_2l", qmodename);
-    const char* name_mixHist = Form("h_%sSSCor_mix_2l", qmodename);
+
+    const char* name_sigHist = "hSigSS";
+    const char* name_mixHist = "hMixSS";
     
     TH1D* q_sigHist_cor = getHistogram(searchPattern.Data(), name_sigHist);
     TH1D* q_mixHist_cor = getHistogram(searchPattern.Data(), name_mixHist);
@@ -361,8 +486,24 @@ void doubleRatioMixFit(ControlVar selectedControlVar,
             }
         }
     }
+    std::string singleRatioBaseName = "sr";
+    std::string doubleRatioBaseName = "dr";
+    MultipleFitResults multiResults;
     
+    for (const auto& f1 : fits1){
+        std::string fitName = Form("%s_%s", singleRatioBaseName.c_str(), f1.displayName.c_str());
+        multiResults.results.push_back(f1.result);
+        multiResults.modelNames.push_back(fitName);
+    }
 
+    multiResults.results.push_back(bgRes);
+    multiResults.modelNames.push_back("Background Fit");
+
+    for (const auto& f : fits){
+        std::string fitName = Form("%s_%s", doubleRatioBaseName.c_str(), f.displayName.c_str());
+        multiResults.results.push_back(f.result);
+        multiResults.modelNames.push_back(fitName);
+    }
     // Cleanup memory
     for (auto& f : fits)
     delete f.function;
@@ -371,7 +512,145 @@ void doubleRatioMixFit(ControlVar selectedControlVar,
     delete q_mixHist_cor;
     delete singleRatio;
     delete doubleRatio;
+
+    return multiResults;
     
+}
+
+MultipleFitResults doubleRatioMixFitLevyAlphaOneSeed(
+                    ControlVar selectedControlVar,
+                    std::vector<std::pair<FitFunctionType, FitInit>> models,
+                    double bin_low, double bin_high,
+                    Double_t etaMin, Double_t etaMax,
+                    Double_t ptMin,
+                    Double_t q1, Double_t q2,
+                    qMode mode,
+                    double fitMin = 0.0, double fitMax = 10.0, double fitMinBG = 0.15,
+                    double plotXMin = 0.0, double plotXMax = 10.0,
+                    double plotYMin = 0.0, double plotYMax = 2.1,
+                    const char* fileName = nullptr)
+{
+    const char* qmodename = (mode == qMode::QINV) ? "qinv" : "qlcms";
+    const char* selectionVarName = getSelVarName(selectedControlVar);
+    TString searchPattern;
+
+    if (!fileName) {
+        searchPattern = TString::Format(
+            "./data/signal_mix/"
+            "%s_eta-abs%.2f_CENTHF_%d-%d_cent%dto%d*.root",
+            qmodename, etaMin, (int)bin_low, (int)bin_high, (int)bin_low, (int)bin_high
+        );
+    } else {
+        searchPattern = TString::Format(
+            "./data/signal_mix/"
+            "%s_eta-abs%.2f_CENTHF_%d-%d_cent%dto%d-%s.root",
+            qmodename, etaMin, (int)bin_low, (int)bin_high, (int)bin_low, (int)bin_high, fileName
+        );
+    }
+
+    const char* name_sigHist = "hSigSS";
+    const char* name_mixHist = "hMixSS";
+
+    TH1D* q_sigHist_cor = getHistogram(searchPattern.Data(), name_sigHist);
+    TH1D* q_mixHist_cor = getHistogram(searchPattern.Data(), name_mixHist);
+
+    TH1D* singleRatio = histhistRatioWithComp(
+        q_sigHist_cor, q_mixHist_cor, q1, q2, "sr_cor", "testMix"
+    );
+
+    saveRatio(
+        singleRatio,
+        Form("sr_cor_%s_%s_%.0f-%.0f", qmodename, selectionVarName, bin_low, bin_high),
+        plotXMin, plotXMax, plotYMin, plotYMax,
+        "sr_cor", "PbPb 2.76 TeV | Single Ratio",
+        (mode == qMode::QLCMS)
+            ? "; q_{LCMS} [GeV]; C_{2}(q_{LCMS}) = Sig/Mix"
+            : "; q_{inv} [GeV]; C_{2}(q_{inv}) = Sig/Mix",
+        "Single Ratio (Sig/Mix)"
+    );
+
+    FitInit levyInit = findModelInitOrDefault(
+        models,
+        FitFunctionType::DOUBLE_LEVY,
+        {{0.6, 4.0, 1.0, 0.0, 1.0}}
+    );
+
+    FitOutput singleRatioLevyFit = fitDoubleLevyAlphaOneThenFree(
+        singleRatio,
+        levyInit,
+        fitMin,
+        fitMax
+    );
+
+    saveFits(
+        singleRatio,
+        {singleRatioLevyFit},
+        "c_single_ratio_levy_alpha1_seed_fit",
+        Form("PbPb 2.76 TeV | Single Ratio | %s: %.0f-%.0f", selectionVarName, bin_low, bin_high),
+        Form("fit_alpha1seed_sr_%s_%s_%.0f-%.0f", qmodename, selectionVarName, bin_low, bin_high),
+        (mode == qMode::QLCMS)
+            ? "; q_{LCMS} [GeV]; C_{2}(q_{LCMS}) = Sig/Mix"
+            : "; q_{inv} [GeV]; C_{2}(q_{inv}) = Sig/Mix",
+        mode, plotXMin, plotXMax, plotYMin, plotYMax
+    );
+
+    FitInit bgInit{{1.0, 0.1, 2.0, 0.1, 2.0}};
+    TFitResultPtr bgRes;
+    TF1* bgFit = fitHistogram(
+        singleRatio,
+        &bgRes,
+        FitFunctionType::BACKGROUND,
+        bgInit,
+        fitMinBG
+    );
+
+    TH1D* doubleRatio = histfuncRatio(singleRatio, bgFit, "dr_cor");
+
+    saveRatio(
+        doubleRatio,
+        Form("dr_cor_%s_%s_%.0f-%.0f", qmodename, selectionVarName, bin_low, bin_high),
+        plotXMin, plotXMax, plotYMin, plotYMax,
+        "dr_cor", "PbPb 2.76 TeV | Double Ratio",
+        (mode == qMode::QLCMS)
+            ? "; q_{LCMS} [GeV]; C_{2}(q_{LCMS}) = Data/Fit"
+            : "; q_{inv} [GeV]; C_{2}(q_{inv}) = Data/Fit",
+        "Double Ratio (Data/Fit)"
+    );
+
+    FitOutput doubleRatioLevyFit = fitDoubleLevyAlphaOneThenFree(
+        doubleRatio,
+        levyInit,
+        fitMin,
+        fitMax
+    );
+
+    saveFits(
+        doubleRatio,
+        {doubleRatioLevyFit},
+        "c_double_ratio_levy_alpha1_seed_fit",
+        Form("PbPb 2.76 TeV | Double Ratio | %s: %.0f-%.0f", selectionVarName, bin_low, bin_high),
+        Form("fit_alpha1seed_dr_%s_%s_%.0f-%.0f", qmodename, selectionVarName, bin_low, bin_high),
+        (mode == qMode::QLCMS)
+            ? "; q_{LCMS} [GeV]; C_{2}(q_{LCMS}) = Data/Fit"
+            : "; q_{inv} [GeV]; C_{2}(q_{inv}) = Data/Fit",
+        mode, plotXMin, plotXMax, plotYMin, plotYMax
+    );
+
+    MultipleFitResults multiResults;
+    multiResults.results.push_back(singleRatioLevyFit.result);
+    multiResults.modelNames.push_back("sr_Levy Fit (#alpha free, #alpha=1 seed)");
+    multiResults.results.push_back(doubleRatioLevyFit.result);
+    multiResults.modelNames.push_back("dr_Levy Fit (#alpha free, #alpha=1 seed)");
+
+    delete singleRatioLevyFit.function;
+    delete doubleRatioLevyFit.function;
+    delete bgFit;
+    delete q_sigHist_cor;
+    delete q_mixHist_cor;
+    delete singleRatio;
+    delete doubleRatio;
+
+    return multiResults;
 }
 
 void DeltaPhiDeltaEtaRatio(ControlVar selectedControlVar,

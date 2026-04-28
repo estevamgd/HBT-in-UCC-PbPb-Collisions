@@ -1,12 +1,7 @@
 #include "../include/ratiosAndFits.h"
 
-
-int main() {
-    // to compile use:
-    // g++ -std=c++17 -pthread ratiosAndFits.cpp -o ratiosAndFits `root-config --cflags --libs`
-    // to run use:
-    // ./ratiosAndFits
-
+void whatRatio(const char* rationame) {
+    // -- Configuration --
     // --- Configuration ---
     // Define the analysis parameters
     ControlVar selectedControlVar = ControlVar::CENTHF;
@@ -23,11 +18,11 @@ int main() {
         {FitFunctionType::DOUBLE_LEVY, {{0.6, 4.0, 1.5, 0.0, 1.0}}}
     };
 
-    double bin_low = 3200.0;
-    double bin_high = 3300.0;
+    double bin_low = 3700.0;
+    double bin_high = 3800.0;
     
     double plotXMin = 0.0;
-    double plotXMax = 10.;
+    double plotXMax = 0.5;
 
     double plotYMin = 0.9;
     double plotYMax = 2.1;
@@ -57,30 +52,7 @@ int main() {
     // ===== Fit-range scan configuration (Double Ratio) =====
     FitRangeScanConfig scanCfgDR = scanCfgSR;
 
-    // ===== Analysis =====
-    /*
-    doubleRatioMixFit(
-        selectedControlVar,
-        models,
-        bin_low, bin_high,
-        etaMin, etaMax, ptMin,
-        q1, q2,
-        modeLCMS,
-        fitMin, fitMax, fitMinBg,
-        plotXMin, plotXMax, plotYMin, plotYMax
-    );
-
-    doubleRatioFit(
-        selectedControlVar,
-        models,
-        bin_low, bin_high,
-        etaMin, etaMax, ptMin,
-        q1, q2,
-        modeLCMS,
-        fitMin, fitMax, fitMinBg,
-        plotXMin, plotXMax, plotYMin, plotYMax
-    );
-*/
+    // --- 2D configuration ---
     // --- Configuration ---
     // Define the analysis parameters
     ControlVar selectedControlVar2 = ControlVar::CENTHF;
@@ -105,19 +77,68 @@ int main() {
     Double_t q1y2d = 0.0;
     Double_t q2y2d = 0.015;
 
-    //DeltaPhiDeltaEtaRatio(
-    //    selectedControlVar2,
-    //    bin_low2, bin_high2,
-    //    plotXMin2d, plotXMax2d, plotYMin2d, plotYMax2d, plotZMin2d, plotZMax2d,
-    //    etaCut2d
-    //);
+    std::cout << "Requested ratio: " << rationame << std::endl;
+    if (strcmp(rationame, "singleRatio") == 0) {
+        std::cout << "Performing Single Ratio fit..." << std::endl;
+        // Call the function for single ratio fit
+    } else if (strcmp(rationame, "doubleRatio") == 0) {
+        std::cout << "Performing Double Ratio fit..." << std::endl;
+        doubleRatioFit(
+            selectedControlVar,
+            models,
+            bin_low, bin_high,
+            etaMin, etaMax, ptMin,
+            q1, q2,
+            modeLCMS,
+            fitMin, fitMax, fitMinBg,
+            plotXMin, plotXMax, plotYMin, plotYMax,
+            &scanCfgSR,
+            &scanCfgDR
+        );
+    } else if (strcmp(rationame, "doubleRatioMix") == 0) {
+        std::cout << "Performing Double Ratio fit..." << std::endl;
+        doubleRatioMixFit(
+            selectedControlVar,
+            models,
+            bin_low, bin_high,
+            etaMin, etaMax, ptMin,
+            q1, q2,
+            modeLCMS,
+            fitMin, fitMax, fitMinBg,
+            plotXMin, plotXMax, plotYMin, plotYMax
+        );
+    } else if (strcmp(rationame, "DeltaEtaDeltaPhi") == 0) {
+        std::cout << "Performing Delta Eta Delta Phi fit..." << std::endl;
+        DeltaPhiDeltaEtaRatio(
+            selectedControlVar2,
+            bin_low2, bin_high2,
+            plotXMin2d, plotXMax2d, plotYMin2d, plotYMax2d, plotZMin2d, plotZMax2d,
+            etaCut2d
+        );
+    } else if (strcmp(rationame, "QtQzQ0Q") == 0) {
+        std::cout << "Performing Qt Qz Q0 Q fit..." << std::endl;
+           QtQzQ0QCorrelationRatios(
+            selectedControlVar2,
+            bin_low2, bin_high2,
+            plotXMin2d, plotXMax2d, plotYMin2d, plotYMax2d, plotZMin2d, plotZMax2d,
+            q1x2d, q2x2d, q1y2d, q2y2d
+        );
+    } else {
+        std::cerr << "Unknown ratio name: " << rationame << std::endl;
+    }
+}
 
-    QtQzQ0QCorrelationRatios(
-        selectedControlVar2,
-        bin_low2, bin_high2,
-        plotXMin2d, plotXMax2d, plotYMin2d, plotYMax2d, plotZMin2d, plotZMax2d,
-        q1x2d, q2x2d, q1y2d, q2y2d
-    );
-
+int main() {
+    // to compile use:
+    // g++ -std=c++17 -pthread ratiosAndFits.cpp -o ratiosAndFits `root-config --cflags --libs`
+    // to run use:
+    // ./ratiosAndFits
+    // Possible arguments: singleRatio, doubleRatio, doubleRatioMix, DeltaEtaDeltaPhi, QtQzQ0Q
+    ROOT::Math::MinimizerOptions::SetDefaultMinimizer("Minuit2");
+    const char* rationames[] = {"singleRatio", "doubleRatioMix"};
+    
+    for (const char* rationame : rationames) {
+        whatRatio(rationame);
+    }
     return 0;
 }

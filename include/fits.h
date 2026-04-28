@@ -37,7 +37,7 @@ FitModelConfig getFitModelConfig(FitFunctionType type)
 
     case FitFunctionType::EXPONENTIAL:
         return {
-            "fitExpKC","Exponential Fit (Coulomb)",FitExpKC,5,
+            "fitExpKC","Exponential Fit",FitExpKC,5,
             {"#lambda","R (fm)","dummy","#epsilon","Norm"},
             {{0.,1.},{2.,12.},{0.,0.},{0.,0.},{0.,0.}},
             {{0,"#lambda",""},{1,"R"," fm"}}
@@ -45,7 +45,7 @@ FitModelConfig getFitModelConfig(FitFunctionType type)
 
     case FitFunctionType::GAUSSIAN:
         return {
-            "fitGaussKC","Gaussian Fit (Coulomb)",FitGaussKC,5,
+            "fitGaussKC","Gaussian Fit",FitGaussKC,5,
             {"#lambda","R (fm)","dummy","#epsilon","Norm"},
             {{0.,1.},{2.,12.},{0.,0.},{0.,0.},{0.,0.}},
             {{0,"#lambda",""},{1,"R"," fm"}}
@@ -121,6 +121,38 @@ TF1* fitHistogram(
     if (fitResult) *fitResult = res;
 
     return f;
+}
+
+FitOutput fitHistogramCustom(
+    TH1D* hist,
+    TFitResultPtr* fitResult,
+    const FitInit& init, FitModelConfig cfg,
+    double fitMin, double fitMax ) {
+    if ((int)init.values.size() != cfg.nPar)
+        throw std::runtime_error("Wrong number of initial parameters");
+    
+    TF1* f = new TF1(cfg.name, cfg.func, fitMin, fitMax, cfg.nPar);
+
+    for (int i = 0; i < cfg.nPar; ++i) {
+        f->SetParameter(i, init.values[i]);
+        f->SetParName(i, cfg.parNames[i].c_str());
+
+        if (i < (int)cfg.parLimits.size() &&
+            cfg.parLimits[i].first != cfg.parLimits[i].second){
+                f->SetParLimits(i,
+                    cfg.parLimits[i].first,
+                    cfg.parLimits[i].second);
+                std::cout << "Set limits for parameter " << i << ": "
+                          << cfg.parLimits[i].first << " to "
+                          << cfg.parLimits[i].second << std::endl;
+            }
+    }
+
+    TFitResultPtr res = hist->Fit(f, "S R E M");
+    if (fitResult) *fitResult = res;
+
+    FitFunctionType type = FitFunctionType::UNKNOWN;
+    return {type, f, res, cfg.legendParams, cfg.displayName};
 }
 
 std::vector<FitOutput> fitHistogramMultiple(

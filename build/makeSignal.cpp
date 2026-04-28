@@ -1090,7 +1090,7 @@ int main() {
     inputs.fileInput = "data/merged_2760PbPbMB_pixeltracks_UCC_skim.root";
     inputs.treeInput = "demo/TreeMBUCC";
 
-    std::vector<double> centralityBins = {3200, 3300}; 
+    std::vector<double> centralityBins = {3300, 3400, 3500, 3600, 3700, 3800}; 
     
     // Base parameters setup
     AnalysisParams baseCfg;
