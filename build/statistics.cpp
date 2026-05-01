@@ -1,8 +1,12 @@
 #include "../include/ratiosAndFits.h"
+#include "../include/statistics.h"
+
+#include "TMatrixDSym.h"
 
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -49,11 +53,106 @@ void writeStatisticsSummary(const std::vector<StatisticsFitSummary>& rows,
     }
 }
 
+void writeFTestSummary(const std::vector<FTestSummary>& rows,
+                       const char* outputPath)
+{
+    std::ofstream out(outputPath);
+    if (!out.is_open()) {
+        std::cerr << "Could not open F-test summary: " << outputPath << std::endl;
+        return;
+    }
+
+    out << "HFsumET_bin,ratio,chi2_reduced,ndf_reduced,chi2_full,ndf_full,"
+        << "numerator_dof,denominator_dof,MSR,MSE,F_statistic,p_value\n";
+    out << std::fixed << std::setprecision(10);
+
+    for (const auto& row : rows) {
+        out << row.binLabel << ","
+            << row.ratioName << ","
+            << row.chi2Reduced << ","
+            << row.ndfReduced << ","
+            << row.chi2Full << ","
+            << row.ndfFull << ","
+            << row.numeratorDof << ","
+            << row.denominatorDof << ","
+            << row.msr << ","
+            << row.mse << ","
+            << row.fStatistic << ","
+            << row.pValue << "\n";
+    }
+}
+
+std::string sanitizeForFileName(const std::string& text)
+{
+    std::string sanitized;
+    for (char c : text) {
+        if ((c >= 'a' && c <= 'z') ||
+            (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9')) {
+            sanitized += c;
+        } else {
+            sanitized += '_';
+        }
+    }
+    return sanitized;
+}
+
+void printAndSaveCorrelationMatrix(const std::string& binLabel,
+                                   const std::string& ratioName,
+                                   const std::string& fitStage,
+                                   const FitOutput& fit,
+                                   const char* outputDir)
+{
+    if (!fit.function || !fit.result.Get()) {
+        return;
+    }
+
+    const int nPar = fit.function->GetNpar();
+    TMatrixDSym corr = fit.result->GetCorrelationMatrix();
+
+    std::cout << "\nCorrelation matrix | " << binLabel
+              << " | " << ratioName
+              << " | " << fitStage << std::endl;
+
+    for (int i = 0; i < nPar; ++i) {
+        std::cout << "  [" << i << "] " << fit.function->GetParName(i) << std::endl;
+    }
+    corr.Print();
+
+    std::ostringstream path;
+    path << outputDir << "/corr_"
+         << sanitizeForFileName(binLabel) << "_"
+         << sanitizeForFileName(ratioName) << "_"
+         << sanitizeForFileName(fitStage) << ".csv";
+
+    std::ofstream out(path.str());
+    if (!out.is_open()) {
+        std::cerr << "Could not save correlation matrix: " << path.str() << std::endl;
+        return;
+    }
+
+    out << "parameter";
+    for (int i = 0; i < nPar; ++i) {
+        out << "," << fit.function->GetParName(i);
+    }
+    out << "\n";
+
+    out << std::fixed << std::setprecision(10);
+    for (int i = 0; i < nPar; ++i) {
+        out << fit.function->GetParName(i);
+        for (int j = 0; j < nPar; ++j) {
+            out << "," << corr(i, j);
+        }
+        out << "\n";
+    }
+}
+
 void appendFitSummary(std::vector<StatisticsFitSummary>& summaries,
                       const std::string& binLabel,
                       const std::string& ratioName,
                       const std::string& fitStage,
-                      const FitOutput& fit)
+                      const FitOutput& fit,
+                      const char* matrixOutputDir)
 {
     if (!fit.function || !fit.result.Get()) {
         std::cerr << "Missing " << fitStage << " result for " << ratioName
@@ -82,11 +181,21 @@ void appendFitSummary(std::vector<StatisticsFitSummary>& summaries,
               << ", chi2/NDF = " << summary.chi2 << "/" << summary.ndf
               << ", p = " << summary.pValue << std::endl;
 
+    printAndSaveCorrelationMatrix(
+        binLabel,
+        ratioName,
+        fitStage,
+        fit,
+        matrixOutputDir
+    );
+
     summaries.push_back(summary);
 }
 
-std::vector<StatisticsFitSummary> runStatisticsForHFsumETBins(
-    const std::vector<double>& bins)
+void runStatisticsForHFsumETBins(
+    const std::vector<double>& bins,
+    std::vector<StatisticsFitSummary>& summaries,
+    std::vector<FTestSummary>& fTestSummaries)
 {
     ControlVar selectedControlVar = ControlVar::CENTHF;
     qMode mode = qMode::QLCMS;
@@ -113,7 +222,8 @@ std::vector<StatisticsFitSummary> runStatisticsForHFsumETBins(
     Double_t q1 = 6.82;
     Double_t q2 = 8.4;
 
-    std::vector<StatisticsFitSummary> summaries;
+    const char* matrixOutputDir = "./data/statistics/correlation_matrices";
+    gSystem->mkdir(matrixOutputDir, true);
 
     for (size_t i = 0; i + 1 < bins.size(); ++i) {
         double binLow = bins[i];
@@ -168,15 +278,24 @@ std::vector<StatisticsFitSummary> runStatisticsForHFsumETBins(
             binLabel,
             "sr_Levy",
             "alpha fixed to 1",
-            singleRatioLevyFit.fixedAlphaFit
+            singleRatioLevyFit.fixedAlphaFit,
+            matrixOutputDir
         );
         appendFitSummary(
             summaries,
             binLabel,
             "sr_Levy",
             "alpha free initialized from fixed-alpha fit",
-            singleRatioLevyFit.freeAlphaFit
+            singleRatioLevyFit.freeAlphaFit,
+            matrixOutputDir
         );
+
+        fTestSummaries.push_back(fTestAlphaFixedVsFree(
+            binLabel,
+            "sr_Levy",
+            singleRatioLevyFit.fixedAlphaFit,
+            singleRatioLevyFit.freeAlphaFit
+        ));
 
         saveFits(
             singleRatio,
@@ -221,15 +340,24 @@ std::vector<StatisticsFitSummary> runStatisticsForHFsumETBins(
             binLabel,
             "dr_Levy",
             "alpha fixed to 1",
-            doubleRatioLevyFit.fixedAlphaFit
+            doubleRatioLevyFit.fixedAlphaFit,
+            matrixOutputDir
         );
         appendFitSummary(
             summaries,
             binLabel,
             "dr_Levy",
             "alpha free initialized from fixed-alpha fit",
-            doubleRatioLevyFit.freeAlphaFit
+            doubleRatioLevyFit.freeAlphaFit,
+            matrixOutputDir
         );
+
+        fTestSummaries.push_back(fTestAlphaFixedVsFree(
+            binLabel,
+            "dr_Levy",
+            doubleRatioLevyFit.fixedAlphaFit,
+            doubleRatioLevyFit.freeAlphaFit
+        ));
 
         saveFits(
             doubleRatio,
@@ -251,9 +379,8 @@ std::vector<StatisticsFitSummary> runStatisticsForHFsumETBins(
         delete singleRatio;
         delete doubleRatio;
     }
-
-    return summaries;
 }
+
 
 int main()
 {
@@ -268,16 +395,22 @@ int main()
         3200.0, 3300.0, 3400.0, 3500.0, 3600.0, 3700.0, 3800.0
     };
 
-    std::vector<StatisticsFitSummary> summaries =
-        runStatisticsForHFsumETBins(hfSumEtBins);
+    std::vector<StatisticsFitSummary> summaries;
+    std::vector<FTestSummary> fTestSummaries;
+    runStatisticsForHFsumETBins(hfSumEtBins, summaries, fTestSummaries);
 
     gSystem->mkdir("./data/statistics", true);
-    const char* outputPath = "./data/statistics/hfsumet_alpha1_seed_summary.csv";
-    writeStatisticsSummary(summaries, outputPath);
+    const char* fitSummaryPath = "./data/statistics/hfsumet_alpha1_seed_summary.csv";
+    const char* fTestSummaryPath = "./data/statistics/hfsumet_f_test_summary.csv";
+    writeStatisticsSummary(summaries, fitSummaryPath);
+    writeFTestSummary(fTestSummaries, fTestSummaryPath);
 
     AnalysisLog::instance().save("./logs", "statistics_alpha1_seed");
+    plot_ftest();
 
-    std::cout << "\nSaved statistics summary to: " << outputPath << std::endl;
+    std::cout << "\nSaved statistics summary to: " << fitSummaryPath << std::endl;
+    std::cout << "Saved F-test summary to: " << fTestSummaryPath << std::endl;
+    std::cout << "Saved correlation matrices to: ./data/statistics/correlation_matrices" << std::endl;
     std::cout << "Saved log to: ./logs/statistics_alpha1_seed_log-*.txt" << std::endl;
 
     return 0;

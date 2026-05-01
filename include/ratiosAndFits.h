@@ -20,7 +20,7 @@ struct AlphaSeedFitOutput {
     FitInit freeAlphaInit;
 };
 
-FitInit findModelInitOrDefault(
+inline FitInit findModelInitOrDefault(
     const std::vector<std::pair<FitFunctionType, FitInit>>& models,
     FitFunctionType type,
     const FitInit& fallback)
@@ -34,7 +34,7 @@ FitInit findModelInitOrDefault(
     return fallback;
 }
 
-AlphaSeedFitOutput fitDoubleLevyAlphaOneThenFreeDetailed(
+inline AlphaSeedFitOutput fitDoubleLevyAlphaOneThenFreeDetailed(
     TH1D* hist,
     const FitInit& init,
     double fitMin = 0.0,
@@ -105,7 +105,7 @@ AlphaSeedFitOutput fitDoubleLevyAlphaOneThenFreeDetailed(
     };
 }
 
-FitOutput fitDoubleLevyAlphaOneThenFree(
+inline FitOutput fitDoubleLevyAlphaOneThenFree(
     TH1D* hist,
     const FitInit& init,
     double fitMin = 0.0,

@@ -61,6 +61,20 @@ inline void fitRangeScanHistogram(
         nBinsMax, cfg.fitMaxLow, cfg.fitMaxHigh
     );
 
+    TH2D* hR = new TH2D(
+        "hFitRangeR",
+        ";Fit min [GeV];Fit max [GeV];R [fm]",
+        nBinsMin, cfg.fitMinLow, cfg.fitMinHigh,
+        nBinsMax, cfg.fitMaxLow, cfg.fitMaxHigh
+    );
+
+    TH2D* hLambda = new TH2D(
+        "hFitRangeLambda",
+        ";Fit min [GeV];Fit max [GeV];#Lambda",
+        nBinsMin, cfg.fitMinLow, cfg.fitMinHigh,
+        nBinsMax, cfg.fitMaxLow, cfg.fitMaxHigh
+    );
+
     for (double fitMin = cfg.fitMinLow;
          fitMin <= cfg.fitMinHigh;
          fitMin += cfg.fitMinStep) {
@@ -94,6 +108,8 @@ inline void fitRangeScanHistogram(
                     fitMax,
                     res->Chi2() / res->Ndf()
                 );
+                hR->Fill(fitMin, fitMax, f->GetParameter(1));
+                hLambda->Fill(fitMin, fitMax, f->GetParameter(0));
             }
 
             delete f;
@@ -109,6 +125,8 @@ inline void fitRangeScanHistogram(
     );
     hCL->Write();
     hChi2NDF->Write();
+    hR->Write();
+    hLambda->Write();
     outFile.Close();
 
     // ===== Plotting =====
@@ -134,8 +152,30 @@ inline void fitRangeScanHistogram(
         Form("%s | %s", fitCfg.displayName, subtitle)
     );
 
+    TCanvas* cR =
+        new TCanvas("cFitRangeR", "Fit range scan (R)", 1100, 900);
+    cR->SetRightMargin(0.15);
+    hR->Draw("COLZ");
+
+    drawCMSHeaders(
+        "#bf{CMS} #it{Work in Progress}",
+        Form("%s | %s", fitCfg.displayName, subtitle)
+    );
+
+    TCanvas* cLambda =
+        new TCanvas("cFitRangeLambda", "Fit range scan (#Lambda)", 1100, 900);
+    cLambda->SetRightMargin(0.15);
+    hLambda->Draw("COLZ");
+
+    drawCMSHeaders(
+        "#bf{CMS} #it{Work in Progress}",
+        Form("%s | %s", fitCfg.displayName, subtitle)
+    );
+
     TCanvas* canvCL[]   = { cCL };
     TCanvas* canvChi2[] = { cChi2 };
+    TCanvas* canvR[]    = { cR };
+    TCanvas* canvLambda[] = { cLambda };
 
     save_canvas_images(
         canvCL, 1,
@@ -160,13 +200,45 @@ inline void fitRangeScanHistogram(
         canvChi2, 1,
         "./imgs/test/fit_range_scan/",
         Form("%s_Chi2NDF", fitCfg.name),
+        "pdf"
+    );
+
+    save_canvas_images(
+        canvR, 1,
+        "./imgs/test/fit_range_scan/",
+        Form("%s_R", fitCfg.name),
+        "png"
+    );
+
+    save_canvas_images(
+        canvR, 1,
+        "./imgs/test/fit_range_scan/",
+        Form("%s_R", fitCfg.name),
+        "pdf"
+    );
+
+    save_canvas_images(
+        canvLambda, 1,
+        "./imgs/test/fit_range_scan/",
+        Form("%s_Lambda", fitCfg.name),
+        "png"
+    );
+
+    save_canvas_images(
+        canvLambda, 1,
+        "./imgs/test/fit_range_scan/",
+        Form("%s_Lambda", fitCfg.name),
         "pdf"
     );
 
     delete cCL;
     delete cChi2;
+    delete cR;
+    delete cLambda;
     delete hCL;
     delete hChi2NDF;
+    delete hR;
+    delete hLambda;
 }
 
 #endif

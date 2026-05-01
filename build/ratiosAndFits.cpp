@@ -27,7 +27,7 @@ void whatRatio(const char* rationame) {
     double plotYMin = 0.9;
     double plotYMax = 2.1;
     
-    double fitMin = 0.04;
+    double fitMin = 0.02;
     double fitMax = 0.2;
     double fitMinBg = 0.2;
 

@@ -39,7 +39,8 @@ FitModelConfig getFitModelConfig(FitFunctionType type)
         return {
             "fitExpKC","Exponential Fit",FitExpKC,5,
             {"#lambda","R (fm)","dummy","#epsilon","Norm"},
-            {{0.,1.},{2.,12.},{0.,0.},{0.,0.},{0.,0.}},
+            {{0.,0.},{0.,0.},{0.,0.},{0.,0.},{0.,0.}},
+            //{{0.,2.},{2.,12.},{0.,0.},{0.,0.},{0.,0.}},
             {{0,"#lambda",""},{1,"R"," fm"}}
         };
 
@@ -47,7 +48,8 @@ FitModelConfig getFitModelConfig(FitFunctionType type)
         return {
             "fitGaussKC","Gaussian Fit",FitGaussKC,5,
             {"#lambda","R (fm)","dummy","#epsilon","Norm"},
-            {{0.,1.},{2.,12.},{0.,0.},{0.,0.},{0.,0.}},
+            {{0.,0.},{0.,0.},{0.,0.},{0.,0.},{0.,0.}},
+            //{{0.,2.},{2.,12.},{0.,0.},{0.,0.},{0.,0.}},
             {{0,"#lambda",""},{1,"R"," fm"}}
         };
 
@@ -55,7 +57,8 @@ FitModelConfig getFitModelConfig(FitFunctionType type)
         return {
             "fitLevy","Levy Fit",FitLevy,5,
             {"Const","#lambda","R (fm)","#epsilon","#alpha"},
-            {{0.,0.},{0.,1.},{0.,0.},{0.,0.},{1.,2.}},
+            {{0.,0.},{0.,0.},{0.,0.},{0.,0.},{0.,0.}},
+            //{{0.,0.},{0.,1.},{0.,0.},{0.,0.},{1.,2.}},
             {{1,"#lambda",""},{2,"R"," fm"},{4,"#alpha",""}}
         };
 
@@ -63,7 +66,8 @@ FitModelConfig getFitModelConfig(FitFunctionType type)
         return {
             "fitLevy2","Levy2 Fit",FitLevy2,3,
             {"#lambda","R (fm)","#alpha"},
-            {{0.,1.},{0.,0.},{1.,2.}},
+            {{0.,0.},{0.,0.},{0.,0.}},
+            //{{0.,1.},{0.,0.},{1.,2.}},
             {{0,"#lambda",""},{1,"R"," fm"},{2,"#alpha",""}}
         };
 
@@ -71,7 +75,8 @@ FitModelConfig getFitModelConfig(FitFunctionType type)
         return {
             "fitLevyDR","Double Ratio Levy Fit",FitLevyDR,5,
             {"#lambda","R","#alpha","#epsilon","Norm"},
-            {{0.,1.},{2.,12.},{0.8,2.},{0.,0.},{0.,0.}},
+            {{0.,0.},{0.,0.},{0.,0.},{0.,0.},{0.,0.}},
+            //{{0.,2.},{2.,12.},{0.8,2.},{0.,0.},{0.,0.}},
             {{0,"#lambda",""},{1,"R"," fm"},{2,"#alpha",""}}
         };
 
@@ -79,6 +84,7 @@ FitModelConfig getFitModelConfig(FitFunctionType type)
         return {
             "fitBG","Background Fit",FitBG,5,
             {"Norm","#alpha_{1}","R_{1}","#alpha_{2}","R_{2}"},
+            //{{0.,0.},{0.,0.},{0.,0.},{0.,0.},{0.,0.}},
             {{0.,0.},{0.,0.},{0.,0.},{0.,0.},{0.,0.}},
             {}
         };

@@ -26,13 +26,30 @@ void resultPlots(double bins[], size_t numBins){
     double plotYMin = 0.9;
     double plotYMax = 2.1;
     
-    double fitMin = 0.04;
+    double fitMin = 0.02;
     double fitMax = 0.2;
     double fitMinBg = 0.2;
 
     // Normalization qinv range
     Double_t q1 = 6.82;
     Double_t q2 = 8.4;
+
+    // ===== Fit-range scan configuration (Single Ratio) =====
+    FitRangeScanConfig scanCfgSR;
+    scanCfgSR.fitType = FitFunctionType::DOUBLE_LEVY;
+
+    scanCfgSR.fitMinLow  = 0.02;
+    scanCfgSR.fitMinHigh = 0.04;
+    scanCfgSR.fitMinStep = 0.0005;
+
+    scanCfgSR.fitMaxLow  = 0.04;
+    scanCfgSR.fitMaxHigh = 0.3;
+    scanCfgSR.fitMaxStep = 0.005;
+
+    scanCfgSR.outDir = "./data/fit_range_scan/";
+
+    // ===== Fit-range scan configuration (Double Ratio) =====
+    FitRangeScanConfig scanCfgDR = scanCfgSR;
 
     std::vector<std::pair<double, double>> sr_y_values_exp, sr_y_values_gaus, sr_y_values_levy;
     std::vector<std::pair<double, double>> dr_y_values_exp, dr_y_values_gaus, dr_y_values_levy;
@@ -57,7 +74,9 @@ void resultPlots(double bins[], size_t numBins){
             q1, q2,
             modeLCMS,
             fitMin, fitMax, fitMinBg,
-            plotXMin, plotXMax, plotYMin, plotYMax
+            plotXMin, plotXMax, plotYMin, plotYMax,
+            &scanCfgSR,
+            &scanCfgDR
         );
 
         int j = 0;
@@ -454,7 +473,7 @@ int main(){
     // ./resultPlots
     ROOT::Math::MinimizerOptions::SetDefaultMinimizer("Minuit2");
     double bins[] = {3200.0, 3300.0, 3400.0, 3500.0, 3600.0, 3700.0, 3800.0};
-    //resultPlots(bins, sizeof(bins)/sizeof(bins[0]));
-    resultPlotsLevyAlpha1Seed(bins, sizeof(bins)/sizeof(bins[0]));
+    resultPlots(bins, sizeof(bins)/sizeof(bins[0]));
+    //resultPlotsLevyAlpha1Seed(bins, sizeof(bins)/sizeof(bins[0]));
     return 0;
 }
